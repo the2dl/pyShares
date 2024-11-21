@@ -11,7 +11,7 @@ console = Console()
 
 def get_credentials():
     """Get username and password interactively"""
-    print("\nPlease enter domain credentials:")
+    print("\nPlease enter domain credentials (example: domain\\username):")
     username = input("Username: ")
     password = getpass.getpass("Password: ")
     return username, password

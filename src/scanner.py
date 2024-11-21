@@ -91,10 +91,8 @@ class ShareScanner:
 
             # Try to resolve the hostname
             ip = socket.gethostbyname(hostname)
-            print(f"Resolved {hostname} to {ip}")
             return ip
-        except socket.gaierror as e:
-            print(f"Could not resolve {hostname}: {str(e)}")
+        except socket.gaierror:
             return None
 
     def determine_access_level(self, smb, share_name: str) -> tuple[ShareAccess, Optional[str]]:
@@ -213,52 +211,39 @@ class ShareScanner:
             return []
 
     def scan_host(self, hostname: str) -> Dict:
-        print(f"\nAttempting to scan: {hostname}")
-
         ip = self.resolve_host(hostname)
         if not ip:
             return {'success': False, 'error': 'Could not resolve hostname', 'hostname': hostname}
 
         try:
-            print(f"Connecting to {hostname} ({ip})")
             smb = SMBConnection(ip, ip)
 
             # Try authentication methods
             try:
                 smb.login('', '')
-                print(f"Connected to {hostname} ({ip}) with null session")
                 auth_method = "Null Session"
             except:
                 try:
                     domain, username = self.config.LDAP_USER.split('\\')
                     smb.login(username, self.config.LDAP_PASSWORD, domain)
-                    print(f"Connected to {hostname} ({ip}) with domain credentials")
                     auth_method = "Domain Auth"
                 except Exception as auth_e:
-                    print(f"Authentication failed: {str(auth_e)}")
                     return {'success': False, 'error': f'Authentication failed: {str(auth_e)}', 'hostname': hostname}
 
             shares_details = []
             try:
                 share_list = smb.listShares()
-                print(f"\nFound {len(share_list)} shares on {hostname}")
-                print(f"Authenticated using: {auth_method}")
 
                 for share in share_list:
                     share_name = share['shi1_netname'][:-1]
-                    print(f"\nProcessing share: {share_name}")
 
                     if share_name in self.config.DEFAULT_EXCLUDED_SHARES:
-                        print(f"Skipping excluded share: {share_name}")
                         continue
 
                     access_level, error_msg = self.determine_access_level(smb, share_name)
-                    print(f"Access level: {access_level.value}")
-
                     share_detail = ShareDetails(hostname, share_name, access_level)
 
                     if access_level in [ShareAccess.FULL_ACCESS, ShareAccess.READ_ONLY]:
-                        # Get root directory listing
                         root_info = self.scan_share_root(smb, share_name)
                         if root_info:
                             share_detail.root_files = root_info['root_listing']
@@ -266,23 +251,19 @@ class ShareScanner:
                             share_detail.total_dirs = root_info['total_dirs']
                             share_detail.hidden_files = root_info['hidden_files']
 
-                        # Get permissions
                         share_detail.share_permissions = self.get_share_permissions(smb, share_name)
 
-                        # Scan for sensitive files if configured
                         if self.config.SCAN_FOR_SENSITIVE:
                             share_detail.sensitive_files = self.scan_share_for_sensitive(smb, share_name)
 
                     shares_details.append(share_detail)
 
             except Exception as share_e:
-                print(f"Error listing shares: {str(share_e)}")
                 return {'success': False, 'error': f'Error listing shares: {str(share_e)}', 'hostname': hostname}
 
             return {'success': True, 'shares': shares_details}
 
         except Exception as e:
-            print(f"Error scanning {hostname} ({ip if ip else 'unresolved'}): {str(e)}")
             return {'success': False, 'error': str(e), 'hostname': hostname}
 
     def scan_share_for_sensitive(self, smb, share_name: str, path: str = '') -> List[Dict]:
@@ -314,20 +295,16 @@ class ShareScanner:
         return sensitive_files
 
     def scan_network(self, hosts: List[str]) -> None:
-        """Scan network shares with controlled batch sizes for both scanning and storing"""
         valid_hosts = [h for h in hosts if h and h != "[]"]
         total_hosts = len(valid_hosts)
         
-        print(f"\nStarting scan of {total_hosts} valid hosts...")
-        
         total_shares_processed = 0
         total_sensitive_files = 0
-        storage_batch = []  # Temporary storage for results
-        storage_batch_size = 1000  # Number of share results to store at once
+        storage_batch = []
+        storage_batch_size = 1000
         
         for i in range(0, total_hosts, self.batch_size):
             batch = valid_hosts[i:i + self.batch_size]
-            print(f"\nProcessing batch {i//self.batch_size + 1} ({len(batch)} hosts)")
             
             with ThreadPoolExecutor(max_workers=self.config.DEFAULT_THREADS) as executor:
                 future_to_host = {executor.submit(self.scan_host, host): host
@@ -338,27 +315,21 @@ class ShareScanner:
                     try:
                         result = future.result()
                         completed += 1
-                        if completed % 100 == 0:
-                            print(f"Completed {completed}/{len(batch)} in current batch")
-                            
+                        
                         if result['success'] and 'shares' in result:
                             storage_batch.extend(result['shares'])
                             
-                            # Store results when we reach the storage batch size
                             if len(storage_batch) >= storage_batch_size:
                                 try:
                                     shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
                                     total_shares_processed += shares_count
                                     total_sensitive_files += sensitive_count
-                                    print(f"\nIntermediate storage complete:")
-                                    print(f"Total shares processed: {total_shares_processed}")
-                                    print(f"Total sensitive files found: {total_sensitive_files}")
-                                    storage_batch = []  # Clear the batch after storing
+                                    storage_batch = []
                                 except Exception as e:
                                     print(f"Error storing batch results: {str(e)}")
                                     
                     except Exception as e:
-                        print(f"Error processing result: {str(e)}")
+                        continue
         
         # Store any remaining results
         if storage_batch:
@@ -369,7 +340,7 @@ class ShareScanner:
             except Exception as e:
                 print(f"Error storing final batch results: {str(e)}")
         
-        print(f"\nScan complete:")
+        print(f"Scan complete:")
         print(f"Total shares processed: {total_shares_processed}")
         print(f"Total sensitive files found: {total_sensitive_files}")
 
