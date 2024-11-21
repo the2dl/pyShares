@@ -25,6 +25,13 @@ class Config:
     # Runtime credentials
     _credentials: dict = None
     
+    # Scanning depth and timeout settings
+    MAX_SCAN_DEPTH: int = 5
+    SCAN_TIMEOUT: int = 30
+    HOST_SCAN_TIMEOUT: int = 300
+    
+    MAX_COMPUTERS: int = 800000  # Maximum number of computers to process
+    
     def __post_init__(self):
         # Load environment variables
         load_dotenv()
@@ -42,6 +49,13 @@ class Config:
         self.DB_NAME = os.getenv("DB_NAME", self.DB_NAME)
         self.DB_USER = os.getenv("DB_USER", self.DB_USER)
         self.DB_PASSWORD = os.getenv("DB_PASSWORD", self.DB_PASSWORD)
+        
+        # Load scanning settings from environment
+        self.MAX_SCAN_DEPTH = int(os.getenv("MAX_SCAN_DEPTH", self.MAX_SCAN_DEPTH))
+        self.SCAN_TIMEOUT = int(os.getenv("SCAN_TIMEOUT", self.SCAN_TIMEOUT))
+        self.HOST_SCAN_TIMEOUT = int(os.getenv("HOST_SCAN_TIMEOUT", self.HOST_SCAN_TIMEOUT))
+        
+        self.MAX_COMPUTERS = int(os.getenv("MAX_COMPUTERS", self.MAX_COMPUTERS))
     
     @property
     def LDAP_USER(self):
