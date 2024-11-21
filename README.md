@@ -2,7 +2,7 @@
 
 A Python-based network share scanner that enumerates and analyzes SMB shares across a Windows domain environment. 
 
-The platform utilizes various chunks of [impacket](https://github.com/SecureAuthCorp/impacket) to prevent code-re-use/re-create. 
+The platform utilizes various chunks of [impacket](https://github.com/fortra/impacket) to prevent code-re-use/re-create. 
 
 ## Features
 
