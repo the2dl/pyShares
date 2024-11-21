@@ -1,4 +1,4 @@
-# pyShare - Python-based Active Directory File Share Scanner
+# pyShares - Python-based Active Directory File Share Scanner
 
 A Python-based network share scanner that enumerates and analyzes SMB shares across a Windows domain environment. 
 
@@ -69,8 +69,6 @@ Additional options:
     --ou                        TEXT     Specific OU to scan [default: None]
     --filter                    TEXT     LDAP filter for computer search [default: all]
     --batch-size                INTEGER  Number of hosts to process in each batch [default: 1000]
-    --install-completion                 Install completion for the current shell.
-    --show-completion                    Show completion for the current shell, to copy it or customize the installation. 
     --help                               Show this message and exit.
 ```
 
