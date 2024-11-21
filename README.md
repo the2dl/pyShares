@@ -96,3 +96,7 @@ The application uses PostgreSQL with the following main tables:
 ## Contributing
 
 Contributions are welcome!
+
+## CYA
+
+This was tested on a small subset of a large AD environment without issue. You may need to tweak the batch size depending on your environment, and be careful not to lock out your account / freeze up your DC. I haven't seen any issues with accounts, but I can't guarantee it. Any issues, please let me know!
