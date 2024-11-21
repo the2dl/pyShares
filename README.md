@@ -1,5 +1,7 @@
 # pyShares - Python-based Active Directory File Share Scanner
 
+![pyShares](img/pyShares.webp)
+
 A Python-based network share scanner that enumerates and analyzes SMB shares across a Windows domain environment.
 
 I wanted a tool that could scan an entire AD environment and provide a report of all shares, permissions, and sensitive files for various reporting purposes, including DLP/etc. This is that tool.
@@ -14,6 +16,8 @@ The platform utilizes various chunks of [impacket](https://github.com/fortra/imp
 - PostgreSQL database storage for results
 - Rich CLI interface with detailed reporting
 - CSV export capabilities
+
+![Sensitive Files Report](img/sensitive_files_report.png)
 
 ## Prerequisites
 
