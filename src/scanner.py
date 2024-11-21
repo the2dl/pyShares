@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TimeElapsedColumn
 import time
 import queue
+from rich.live import Live
 
 # SMB File Attributes Constants
 ATTR_READONLY = 0x1
@@ -306,45 +307,34 @@ class ShareScanner:
         
         ShareScanner.console.print(f"\n[bold]Starting scan of {total_hosts} hosts[/bold]")
         ShareScanner.console.print(f"[bold]Threads:[/bold] {self.config.DEFAULT_THREADS}")
-        ShareScanner.console.print(f"[bold]Timeouts:[/bold] Host={self.config.HOST_SCAN_TIMEOUT}s, Share={self.config.SCAN_TIMEOUT}s")
+        ShareScanner.console.print(f"[bold]Timeouts:[/bold] Host={self.config.HOST_SCAN_TIMEOUT}s, Share={self.config.SCAN_TIMEOUT}s\n")
         
         total_shares_processed = 0
         total_sensitive_files = 0
         storage_batch = []
         
-        with ShareScanner.console.status("[bold green]Scanning network shares...") as status:
-            for i in range(0, total_hosts, self.batch_size):
-                batch = valid_hosts[i:i + self.batch_size]
-                ShareScanner.console.print(f"\n[cyan]Processing batch {i//self.batch_size + 1} ({len(batch)} hosts)[/cyan]")
+        for i in range(0, total_hosts, self.batch_size):
+            batch = valid_hosts[i:i + self.batch_size]
+            
+            with ThreadPoolExecutor(max_workers=self.config.DEFAULT_THREADS) as executor:
+                future_to_host = {
+                    executor.submit(self._scan_host_wrapper, host): host 
+                    for host in batch
+                }
                 
-                with ThreadPoolExecutor(max_workers=self.config.DEFAULT_THREADS) as executor:
-                    future_to_host = {
-                        executor.submit(self._scan_host_wrapper, host): host 
-                        for host in batch
-                    }
-                    
-                    for future in as_completed(future_to_host):
-                        host = future_to_host[future]
-                        try:
-                            result = future.result()
+                for future in as_completed(future_to_host):
+                    try:
+                        result = future.result()
+                        if result['success'] and 'shares' in result:
+                            storage_batch.extend(result['shares'])
                             
-                            if result['success'] and 'shares' in result:
-                                shares_count = len(result['shares'])
-                                if shares_count > 0:
-                                    ShareScanner.console.print(f"[green]✓[/green] {host}: Found {shares_count} shares")
-                                    storage_batch.extend(result['shares'])
-                                    
-                                    # Store results when batch is full
-                                    if len(storage_batch) >= self.batch_size:
-                                        shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
-                                        total_shares_processed += shares_count
-                                        total_sensitive_files += sensitive_count
-                                        storage_batch = []
-                            else:
-                                ShareScanner.console.print(f"[red]✗[/red] {host}: {result.get('error', 'Unknown error')}")
-                                
-                        except Exception as e:
-                            ShareScanner.console.print(f"[red]✗[/red] {host}: {str(e)}")
+                            if len(storage_batch) >= self.batch_size:
+                                shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
+                                total_shares_processed += shares_count
+                                total_sensitive_files += sensitive_count
+                                storage_batch = []
+                    except Exception as e:
+                        pass
 
         # Store any remaining results
         if storage_batch:
@@ -440,32 +430,24 @@ class ShareScanner:
         def scan_worker():
             try:
                 access_level, error_msg = self.determine_access_level(smb, share_name)
-                ShareScanner.console.print(f"      Access level: {access_level.name}")
-                
                 share_detail = ShareDetails(hostname, share_name, access_level)
                 
                 if access_level in [ShareAccess.FULL_ACCESS, ShareAccess.READ_ONLY]:
-                    ShareScanner.console.print(f"      Scanning root directory...")
-                    
                     root_info = self.scan_share_root(smb, share_name)
                     if root_info:
                         share_detail.root_files = root_info['root_listing']
                         share_detail.total_files = root_info['total_files']
                         share_detail.total_dirs = root_info['total_dirs']
                         share_detail.hidden_files = root_info['hidden_files']
-                        ShareScanner.console.print(f"      Found {root_info['total_files']} files, {root_info['total_dirs']} directories")
 
                     if self.config.SCAN_FOR_SENSITIVE:
-                        ShareScanner.console.print(f"      Scanning for sensitive files...")
                         sensitive_result = self.scan_share_for_sensitive(smb, share_name)
                         if isinstance(sensitive_result, list):
                             share_detail.sensitive_files = sensitive_result
-                            ShareScanner.console.print(f"      Found {len(sensitive_result)} sensitive files")
                 
                 result_queue.put(share_detail)
                 
             except Exception as e:
-                ShareScanner.console.print(f"      [red]Error: {str(e)}[/red]")
                 result_queue.put(None)
 
         # Start the scan in a separate thread
@@ -488,7 +470,6 @@ class ShareScanner:
     def scan_host(self, hostname: str) -> Dict:
         """Scan a single host"""
         try:
-            ShareScanner.console.print(f"\nScanning host {hostname}")
             ip = self.resolve_host(hostname)
             if not ip:
                 return {'success': False, 'error': 'Could not resolve hostname', 'hostname': hostname}
@@ -515,12 +496,9 @@ class ShareScanner:
                 if share_name in self.config.DEFAULT_EXCLUDED_SHARES:
                     continue
 
-                ShareScanner.console.print(f"    Scanning share: {share_name}")
                 share_result = self._scan_share_with_timeout(smb, hostname, share_name)
-                
                 if share_result:
                     shares_details.append(share_result)
-                    ShareScanner.console.print(f"    ✓ Completed scan of {share_name}")
 
             return {'success': True, 'shares': shares_details}
 
