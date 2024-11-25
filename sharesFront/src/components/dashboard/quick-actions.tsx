@@ -115,16 +115,14 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       cleanup = pollScanStatus(activeScanId, (status) => {
         setScanStatus(status);
         
-        // Show notifications even when minimized or navigated away
         if (status.status === 'completed') {
-          // Show toast notification
           toast({
             title: "Scan Completed",
             description: "Network scan has finished successfully",
-            duration: 10000,
+            duration: Infinity,
+            variant: "default"
           });
 
-          // Show system notification
           if (Notification.permission === 'granted') {
             new Notification('Scan Completed', {
               body: 'Network scan has finished successfully',
@@ -136,7 +134,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             title: "Scan Failed",
             description: status.error || "An error occurred during the scan",
             variant: "destructive",
-            duration: 10000,
+            duration: Infinity,
           });
 
           if (Notification.permission === 'granted') {
