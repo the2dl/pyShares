@@ -43,13 +43,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ActivityIcon } from "lucide-react";
+import { ActivityIcon, Rocket } from "lucide-react";
 import { ScanDiff } from '@/components/dashboard/scan-diff';
 import { Link } from 'react-router-dom';
 import { navigationMenuTriggerStyle } from "@/components/ui/navigation-menu"
 import { format } from 'date-fns';
 import { NetworkMap } from '@/components/dashboard/network-map';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { Provider as JotaiProvider } from 'jotai';
+import { ScanMonitor } from '@/components/scan-monitor';
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const router = createBrowserRouter([
   {
@@ -67,7 +71,11 @@ const router = createBrowserRouter([
 ]);
 
 function Root() {
-  return <RouterProvider router={router} />;
+  return (
+    <JotaiProvider>
+      <RouterProvider router={router} />
+    </JotaiProvider>
+  );
 }
 
 export function App() {
@@ -78,6 +86,7 @@ export function App() {
   const [shares, setShares] = useState<Share[]>([]);
   const [loading, setLoading] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'hostname' | 'share_name'>('all');
   const [filterValue, setFilterValue] = useState('');
   const [sessions, setSessions] = useState<ScanSession[]>([]);
@@ -142,6 +151,7 @@ export function App() {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <TooltipProvider>
+        <ScanMonitor />
         <nav className="border-b">
           <div className="container mx-auto px-4 py-2 flex justify-between items-center">
             <NavigationMenu>
@@ -182,13 +192,32 @@ export function App() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>
+                    <Sheet open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
+                      <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <Rocket className="h-5 w-5" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent className="w-full sm:w-[600px] overflow-y-auto p-6">
+                        <SheetHeader className="mb-6">
+                          <SheetTitle>Quick Actions</SheetTitle>
+                        </SheetHeader>
+                        <QuickActions onActionComplete={() => setQuickActionsOpen(false)} />
+                      </SheetContent>
+                    </Sheet>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>Quick Actions</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
                     <Sheet open={activityOpen} onOpenChange={setActivityOpen}>
                       <SheetTrigger asChild>
-                        <span>
-                          <Button variant="ghost" size="icon">
-                            <ActivityIcon className="h-5 w-5" />
-                          </Button>
-                        </span>
+                        <Button variant="ghost" size="icon">
+                          <ActivityIcon className="h-5 w-5" />
+                        </Button>
                       </SheetTrigger>
                       <SheetContent className="w-full sm:w-[1200px] lg:w-[1400px] overflow-y-auto p-6">
                         <SheetHeader className="mb-6">
@@ -339,7 +368,10 @@ export function App() {
             detectionFilter={detectionFilter}
           />
         </div>
+        <Toaster />
       </TooltipProvider>
     </ThemeProvider>
   );
 }
+
+export default Root;

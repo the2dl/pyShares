@@ -23,7 +23,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -39,25 +39,32 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { postActivity } from '@/lib/api';
+import { atom, useAtom } from 'jotai';
+import { Play, Calendar } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
 }
 
+// Define global atoms for scan state
+export const activeScanAtom = atom<string | null>(null);
+export const scanStatusAtom = atom<{
+  status: 'running' | 'completed' | 'failed';
+  progress?: {
+    total_hosts?: number;
+    processed_hosts?: number;
+    current_host?: string;
+  };
+  error?: string;
+} | null>(null);
+
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
-  const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [activeScanId, setActiveScanId] = useState<string | null>(null);
-  const [scanStatus, setScanStatus] = useState<{
-    status: 'running' | 'completed' | 'failed';
-    progress?: {
-      total_hosts?: number;
-      processed_hosts?: number;
-      current_host?: string;
-    };
-    error?: string;
-  } | null>(null);
-  
+  const [activeScanId, setActiveScanId] = useAtom(activeScanAtom);
+  const [scanStatus, setScanStatus] = useAtom(scanStatusAtom);
+  const [minimizedScans, setMinimizedScans] = useState<{[key: string]: boolean}>({});
+  const { toast } = useToast();
   const [credentials, setCredentials] = useState({
     dc: '',
     domain: '',
@@ -65,30 +72,88 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     password: '',
   });
 
+  const actions = [
+    {
+      label: 'Start Scan',
+      description: 'Start a new network scan',
+      icon: Play,
+      color: 'text-green-500',
+      onClick: () => setIsDialogOpen(true),
+      disabled: false,
+    },
+    {
+      label: 'Schedule Scan',
+      description: 'Schedule a future scan',
+      icon: Calendar,
+      color: 'text-blue-500',
+      onClick: () => {},
+      disabled: true, // Disabled
+    },
+    {
+      label: 'Export Data',
+      description: 'Export scan results',
+      icon: Download,
+      color: 'text-yellow-500',
+      onClick: () => {},
+      disabled: true, // Disabled
+    },
+    {
+      label: 'Settings',
+      description: 'Configure scan settings',
+      icon: Settings,
+      color: 'text-purple-500',
+      onClick: () => {},
+      disabled: true, // Disabled
+    },
+  ];
+
+  // This effect will run globally as long as there's an active scan
   useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
     if (activeScanId) {
-      const cleanup = pollScanStatus(activeScanId, (status) => {
+      cleanup = pollScanStatus(activeScanId, (status) => {
         setScanStatus(status);
         
-        // Show toast notifications for status changes
+        // Show notifications even when minimized or navigated away
         if (status.status === 'completed') {
+          // Show toast notification
           toast({
             title: "Scan Completed",
             description: "Network scan has finished successfully",
-            duration: 5000,
+            duration: 10000,
           });
+
+          // Show system notification
+          if (Notification.permission === 'granted') {
+            new Notification('Scan Completed', {
+              body: 'Network scan has finished successfully',
+              icon: '/path-to-your-icon.png'
+            });
+          }
         } else if (status.status === 'failed') {
           toast({
             title: "Scan Failed",
             description: status.error || "An error occurred during the scan",
             variant: "destructive",
-            duration: 5000,
+            duration: 10000,
           });
+
+          if (Notification.permission === 'granted') {
+            new Notification('Scan Failed', {
+              body: status.error || "An error occurred during the scan",
+              icon: '/path-to-your-icon.png'
+            });
+          }
         }
       });
-      
-      return cleanup;
     }
+
+    return () => {
+      if (cleanup && typeof cleanup === 'function') {
+        cleanup();
+      }
+    };
   }, [activeScanId]);
 
   const handleStartScan = async () => {
@@ -174,104 +239,67 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     );
   };
 
-  const actions = [
-    {
-      icon: PlayCircle,
-      label: 'Start Scan',
-      description: 'Run a new scan on all shares',
-      onClick: () => setIsDialogOpen(true),
-      color: 'text-green-500',
-    },
-    {
-      icon: Shield,
-      label: 'Security Check',
-      description: 'Run security assessment',
-      onClick: () => {},
-      color: 'text-blue-500',
-    },
-    {
-      icon: FileWarning,
-      label: 'Risk Analysis',
-      description: 'View risk report',
-      onClick: () => {},
-      color: 'text-yellow-500',
-    },
-    {
-      icon: AlertTriangle,
-      label: 'Alerts',
-      description: 'View active alerts',
-      onClick: () => {},
-      color: 'text-red-500',
-    },
-    {
-      icon: Download,
-      label: 'Export',
-      description: 'Download scan results',
-      onClick: () => {},
-      color: 'text-purple-500',
-    },
-    {
-      icon: RefreshCw,
-      label: 'Refresh',
-      description: 'Update dashboard data',
-      onClick: () => {},
-      color: 'text-teal-500',
-    },
-    {
-      icon: Settings,
-      label: 'Settings',
-      description: 'Configure scan options',
-      onClick: () => {
-        onActionComplete?.();
-      },
-      color: 'text-gray-500',
-    },
-    {
-      icon: Share2,
-      label: 'Share',
-      description: 'Share dashboard results',
-      onClick: () => {},
-      color: 'text-indigo-500',
-    },
-  ];
+  const handleCloseDialog = () => {
+    if (scanStatus?.status === 'running') {
+      // Store the minimized state for this scan
+      setMinimizedScans(prev => ({
+        ...prev,
+        [activeScanId!]: true
+      }));
+      
+      toast({
+        title: "Scan Running in Background",
+        description: "You'll be notified when the scan completes.",
+        duration: 5000,
+      });
+    }
+    setIsDialogOpen(false);
+  };
+
+  // Add a component to show active scans
+  const renderActiveScansBadge = () => {
+    if (activeScanId && scanStatus?.status === 'running') {
+      return (
+        <div 
+          className="absolute -top-2 -right-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs cursor-pointer"
+          onClick={() => setIsDialogOpen(true)}
+        >
+          1
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks and operations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-            <TooltipProvider>
-              {actions.map((action) => (
-                <Tooltip key={action.label}>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-12 w-full"
-                      onClick={() => action.onClick()}
-                    >
-                      <action.icon className={`h-5 w-5 ${action.color}`} />
-                      <span className="sr-only">{action.label}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{action.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {action.description}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </TooltipProvider>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="grid gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {actions.map((action) => (
+          <Tooltip key={action.label}>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full h-24 flex flex-col items-center justify-center gap-2"
+                onClick={action.onClick}
+                disabled={action.disabled} // Apply disabled state
+              >
+                <action.icon className={cn("h-8 w-8", action.color, {
+                  "opacity-50": action.disabled // Add opacity when disabled
+                })} />
+                <span className={cn("text-sm font-medium", {
+                  "opacity-50": action.disabled // Add opacity to text when disabled
+                })}>{action.label}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{action.description}</p>
+              {action.disabled && <p className="text-xs text-muted-foreground">Coming soon</p>}
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Start New Scan</DialogTitle>
@@ -327,17 +355,9 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
           <div className="flex justify-end gap-3">
             <Button 
               variant="outline" 
-              onClick={() => {
-                if (scanStatus?.status === 'running') {
-                  toast({
-                    title: "Scan in Progress",
-                    description: "You can close this dialog. The scan will continue in the background.",
-                  });
-                }
-                setIsDialogOpen(false);
-              }}
+              onClick={handleCloseDialog}
             >
-              Close
+              {scanStatus?.status === 'running' ? 'Minimize' : 'Close'}
             </Button>
             <Button 
               onClick={handleStartScan}
@@ -353,6 +373,6 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

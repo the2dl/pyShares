@@ -182,14 +182,15 @@ export function NetworkMap() {
     setHasSearched(true);
     
     try {
+      // Always limit network map results to 20 shares
       const shares = await getShares(
         searchTerm,
         undefined,
         filterType,
         searchTerm,
-        selectedSession,
-        1,
-        20
+        selectedSession?.toString(),
+        1,  // page
+        20  // limit
       );
       
       console.log(`Fetched ${shares.length} shares`);
@@ -201,6 +202,7 @@ export function NetworkMap() {
         return;
       }
 
+      // Create nodes from the shares
       const shareNodes = shares.map((share, index) => ({
         id: `share-${share.id}`,
         type: 'share',
@@ -222,10 +224,19 @@ export function NetworkMap() {
 
       setNodes(shareNodes);
       setEdges([]);
+
+      // Set warning message if results were limited, but still show the results
+      if (shares.length === 20) {
+        setError('Note: Showing first 20 matching shares. Please refine your search for more specific results.');
+      } else {
+        setError(null);
+      }
       
     } catch (error) {
       console.error('Failed to fetch shares:', error);
       setError('Failed to load shares. Please try again.');
+      setNodes([]);
+      setEdges([]);
     } finally {
       setLoading(false);
     }
@@ -461,7 +472,7 @@ export function NetworkMap() {
             </form>
           </CardHeader>
           <CardContent className="h-[700px]">
-            {error ? (
+            {error && !nodes.length ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-red-500">{error}</div>
               </div>
@@ -470,26 +481,33 @@ export function NetworkMap() {
                 Enter a hostname or share name to begin
               </div>
             ) : nodes.length > 0 ? (
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                nodeTypes={nodeTypes}
-                fitView
-                minZoom={0.1}
-                maxZoom={1.5}
-                defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
-                connectionMode="loose"
-                snapToGrid={false}
-                elementsSelectable={true}
-                nodesConnectable={false}
-                fitViewOptions={{ padding: 0.2 }}
-              >
-                <Background />
-                <Controls />
-              </ReactFlow>
+              <>
+                {error && (
+                  <div className="mb-4 p-2 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded">
+                    {error}
+                  </div>
+                )}
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeClick={onNodeClick}
+                  nodeTypes={nodeTypes}
+                  fitView
+                  minZoom={0.1}
+                  maxZoom={1.5}
+                  defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+                  connectionMode="loose"
+                  snapToGrid={false}
+                  elementsSelectable={true}
+                  nodesConnectable={false}
+                  fitViewOptions={{ padding: 0.2 }}
+                >
+                  <Background />
+                  <Controls />
+                </ReactFlow>
+              </>
             ) : loading ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin" />

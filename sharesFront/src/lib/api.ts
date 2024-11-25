@@ -5,47 +5,46 @@ export async function getShares(
   detectionType?: DetectionType,
   filterType?: 'hostname' | 'share_name',
   filterValue?: string,
-  sessionId?: number,
-  page = 1,
-  limit = 20
+  sessionId?: string,
+  page?: number,
+  limit?: number
 ): Promise<Share[]> {
   const params = new URLSearchParams();
   
-  console.log('API getShares called with:', {
-    search, detectionType, filterType, filterValue, sessionId, page, limit
-  });
+  if (search) {
+    params.append('search', search);
+  }
   
-  if (search) params.append('search', search);
-  if (detectionType) params.append('detection_type', detectionType);
-  if (filterType && filterValue) {
+  if (detectionType && detectionType !== 'all') {
+    params.append('detection_type', detectionType);
+  }
+
+  if (filterType !== 'all' && filterValue) {
     params.append('filter_type', filterType);
     params.append('filter_value', filterValue);
   }
-  if (sessionId) {
-    params.append('session_id', sessionId.toString());
-    console.log('Adding session_id to params:', sessionId);
+
+  if (sessionId && sessionId !== 'all') {
+    params.append('session_id', sessionId);
+  }
+
+  if (page !== undefined) {
+    params.append('page', page.toString());
+  }
+  if (limit !== undefined) {
+    params.append('limit', limit.toString());
   }
   
-  params.append('page', page.toString());
-  params.append('limit', limit.toString());
-  
-  const url = `${API_BASE}/shares?${params}`;
-  console.log('Fetching URL:', url);
-
-  const response = await fetch(url, {
-    headers: {
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache'
-    }
-  });
+  console.log('Fetching shares with params:', Object.fromEntries(params));
+  const response = await fetch(`${API_BASE}/shares?${params}`);
   
   if (!response.ok) {
-    console.error('API error:', await response.text());
+    console.error('Failed to fetch shares:', await response.text());
     throw new Error('Failed to fetch shares');
   }
   
   const data = await response.json();
-  console.log('API response:', data);
+  console.log(`Found ${data.length} shares`);
   return data;
 }
 

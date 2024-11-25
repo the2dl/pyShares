@@ -78,25 +78,6 @@ const TableSortHeader = ({
   </TableHead>
 );
 
-const filterShares = (
-  shares: Share[], 
-  searchQuery: string,
-  filterType: 'all' | 'hostname' | 'share_name',
-  filterValue: string
-): Share[] => {
-  if (filterType !== 'all' && filterValue.trim()) {
-    const normalizedFilterValue = filterValue.toLowerCase().trim();
-    return shares.filter(share => {
-      if (filterType === 'hostname') {
-        return share.hostname.toLowerCase().includes(normalizedFilterValue);
-      } else {
-        return share.share_name.toLowerCase().includes(normalizedFilterValue);
-      }
-    });
-  }
-  return shares;
-};
-
 const TooltipButton = forwardRef<
   HTMLButtonElement,
   React.ComponentProps<typeof Button>
@@ -155,11 +136,10 @@ export function SharesTable({
   };
   
   const safeShares = shares || [];
-  const filteredShares = filterShares(safeShares, searchQuery, filterType, filterValue);
-  const totalPages = Math.ceil(filteredShares.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(safeShares.length / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
 
-  const sortedShares = sortData(filteredShares);
+  const sortedShares = sortData(safeShares);
   const paginatedShares = sortedShares.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   useEffect(() => {

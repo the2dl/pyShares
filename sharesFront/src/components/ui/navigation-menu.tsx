@@ -3,21 +3,12 @@ import { ChevronDownIcon } from '@radix-ui/react-icons';
 import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
 import { cva } from 'class-variance-authority';
 import { Link } from 'react-router-dom';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Rocket } from 'lucide-react';
-import { QuickActions } from '@/components/dashboard/quick-actions';
-import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { useState } from 'react';
-
 import { cn } from '@/lib/utils';
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof NavigationMenuPrimitive.Root>
 >(({ className, children, ...props }, ref) => {
-  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
-
   return (
     <NavigationMenuPrimitive.Root
       ref={ref}
@@ -70,33 +61,6 @@ const NavigationMenu = React.forwardRef<
           <Link to="/network-map" className={navigationMenuTriggerStyle()}>
             Network Map
           </Link>
-        </NavigationMenuItem>
-
-        <NavigationMenuItem className="ml-2">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div>
-                  <Sheet open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
-                    <SheetTrigger asChild>
-                      <span>
-                        <Button variant="ghost" size="icon">
-                          <Rocket className="h-5 w-5" />
-                        </Button>
-                      </span>
-                    </SheetTrigger>
-                    <SheetContent className="w-full sm:w-[600px] overflow-y-auto p-6">
-                      <SheetHeader className="mb-6">
-                        <SheetTitle>Quick Actions</SheetTitle>
-                      </SheetHeader>
-                      <QuickActions onActionComplete={() => setQuickActionsOpen(false)} />
-                    </SheetContent>
-                  </Sheet>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>Quick Actions</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenuPrimitive.Root>
