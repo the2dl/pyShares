@@ -291,7 +291,15 @@ export function SharesTable({
                 ) : (
                   paginatedShares.map((share) => (
                     <TableRow key={share.id}>
-                      <TableCell className="font-medium">{share.hostname}</TableCell>
+                      <TableCell className="font-medium">
+                        <Button
+                          variant="ghost"
+                          className="p-0 h-auto font-medium hover:bg-transparent"
+                          onClick={() => onViewDetails(share.id)}
+                        >
+                          {share.hostname}
+                        </Button>
+                      </TableCell>
                       <TableCell>{share.share_name}</TableCell>
                       <TableCell>
                         <Tooltip>

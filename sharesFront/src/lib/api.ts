@@ -279,6 +279,8 @@ interface FileChange {
 interface ShareDifference {
   hostname: string;
   share_name: string;
+  session1_access_level: string;
+  session2_access_level: string;
   session1_sensitive_files: number;
   session2_sensitive_files: number;
   session1_hidden_files: number;

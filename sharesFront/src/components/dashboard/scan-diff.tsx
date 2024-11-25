@@ -40,6 +40,18 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { NavigationMenu } from '@/components/ui/navigation-menu';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable"
+import { cn } from '@/lib/utils';
 
 interface ScanSession {
   id: number;
@@ -49,6 +61,21 @@ interface ScanSession {
   total_shares: number;
   total_sensitive_files: number;
   scan_status: string;
+}
+
+interface ShareDifference {
+  hostname: string;
+  share_name: string;
+  session1_access_level: string;
+  session2_access_level: string;
+  session1_sensitive_files: number;
+  session2_sensitive_files: number;
+  session1_hidden_files: number;
+  session2_hidden_files: number;
+  session1_total_files: number;
+  session2_total_files: number;
+  change_type: 'added' | 'removed' | 'modified';
+  file_changes?: FileChange[];
 }
 
 export function ScanDiff() {
@@ -79,6 +106,7 @@ export function ScanDiff() {
         parseInt(session1), 
         parseInt(session2)
       );
+      console.log('Scan comparison data:', data);
       setDiffData(data);
     } catch (error) {
       console.error('Failed to compare sessions:', error);
@@ -285,155 +313,83 @@ export function ScanDiff() {
 
                   {/* Detailed Changes */}
                   <ScrollArea className="h-[600px] rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Change</TableHead>
-                          <TableHead>Share Location</TableHead>
-                          <TableHead className="text-right">Sensitive Files</TableHead>
-                          <TableHead className="text-right">Hidden Files</TableHead>
-                          <TableHead className="text-right">Total Files</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {diffData.differences.map((diff: any, index: number) => (
-                          <Fragment key={index}>
-                            <TableRow>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {getChangeTypeIcon(diff.change_type)}
-                                  {getChangeTypeBadge(diff.change_type)}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Server className="h-4 w-4 text-muted-foreground" />
-                                  <span>{diff.hostname}</span>
-                                  <span className="text-muted-foreground">/</span>
-                                  <Database className="h-4 w-4 text-muted-foreground" />
-                                  <span>{diff.share_name}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {diff.change_type === 'modified' && (
-                                  <span className="text-muted-foreground">
-                                    {diff.session1_sensitive_files} → {diff.session2_sensitive_files}
-                                  </span>
-                                )}
-                                {diff.change_type !== 'modified' && diff.session2_sensitive_files}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {diff.change_type === 'modified' && (
-                                  <span className="text-muted-foreground">
-                                    {diff.session1_hidden_files} → {diff.session2_hidden_files}
-                                  </span>
-                                )}
-                                {diff.change_type !== 'modified' && diff.session2_hidden_files}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {diff.change_type === 'modified' && (
-                                  <span className="text-muted-foreground">
-                                    {diff.session1_total_files} → {diff.session2_total_files}
-                                  </span>
-                                )}
-                                {diff.change_type !== 'modified' && diff.session2_total_files}
-                              </TableCell>
-                            </TableRow>
-                            {diff.file_changes && diff.file_changes.length > 0 && (
-                              <TableRow>
-                                <TableCell colSpan={5} className="bg-muted/50">
-                                  <div className="pl-8">
-                                    <Table>
-                                      <TableHeader>
-                                        <TableRow>
-                                          <TableHead>Change</TableHead>
-                                          <TableHead>File Path</TableHead>
-                                          <TableHead>Detection Type</TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {diff.file_changes.map((file: any, fileIndex: number) => (
-                                          <TableRow key={fileIndex}>
-                                            <TableCell>
-                                              <div className="flex items-center gap-2">
-                                                {getChangeTypeIcon(file.change_type)}
-                                                {getChangeTypeBadge(file.change_type)}
-                                              </div>
-                                            </TableCell>
-                                            <TableCell>
-                                              <span className="font-mono text-sm">
-                                                {file.file_path 
-                                                  ? `${file.file_path}/${file.file_name}`
-                                                  : file.file_name}
-                                              </span>
-                                            </TableCell>
-                                            <TableCell>
-                                              {file.change_type === 'modified' ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                  <span className="text-muted-foreground">
-                                                    {(Array.isArray(file.old_detection_types) 
-                                                      ? file.old_detection_types 
-                                                      : typeof file.old_detection_types === 'string'
-                                                        ? JSON.parse(file.old_detection_types)
-                                                        : [file.old_detection_type]
-                                                    ).map((type: string) => (
-                                                      <Badge key={type} variant="outline" className="mr-1">
-                                                        {type}
-                                                      </Badge>
-                                                    ))}
-                                                    →
-                                                    {(Array.isArray(file.new_detection_types)
-                                                      ? file.new_detection_types
-                                                      : typeof file.new_detection_types === 'string'
-                                                        ? JSON.parse(file.new_detection_types)
-                                                        : [file.new_detection_type]
-                                                    ).map((type: string) => (
-                                                      <Badge key={type} variant="outline" className="ml-1">
-                                                        {type}
-                                                      </Badge>
-                                                    ))}
-                                                  </span>
-                                                </div>
-                                              ) : file.change_type === 'added' ? (
-                                                <div className="flex flex-wrap gap-1">
-                                                  {(Array.isArray(file.new_detection_types)
-                                                    ? file.new_detection_types
-                                                    : typeof file.new_detection_types === 'string'
-                                                      ? JSON.parse(file.new_detection_types)
-                                                      : [file.new_detection_type]
-                                                  ).map((type: string) => (
-                                                    <Badge key={type} variant="outline">
-                                                      {type}
-                                                    </Badge>
-                                                  ))}
-                                                </div>
-                                              ) : (
-                                                <div className="flex flex-wrap gap-1">
-                                                  {(Array.isArray(file.old_detection_types)
-                                                    ? file.old_detection_types
-                                                    : typeof file.old_detection_types === 'string'
-                                                      ? JSON.parse(file.old_detection_types)
-                                                      : [file.old_detection_type]
-                                                  ).map((type: string) => (
-                                                    <Badge key={type} variant="outline">
-                                                      {type}
-                                                    </Badge>
-                                                  ))}
-                                                </div>
-                                              )}
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
+                    <ResizablePanelGroup direction="horizontal">
+                      <ResizablePanel defaultSize={50}>
+                        <div className="h-full p-4 space-y-2">
+                          <div className="font-mono text-sm text-muted-foreground mb-4">Baseline Scan</div>
+                          {diffData.differences.map((diff: any, index: number) => (
+                            <Card key={`left-${index}`} className={cn(
+                              "border-l-4",
+                              diff.change_type === 'removed' && "border-l-red-500 bg-red-500/10",
+                              diff.change_type === 'modified' && "border-l-yellow-500"
+                            )}>
+                              <CardContent className="p-4">
+                                <div className="font-mono text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Server className="h-4 w-4" />
+                                    {diff.hostname}/{diff.share_name}
                                   </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </Fragment>
-                        ))}
-                      </TableBody>
-                    </Table>
+                                  {diff.change_type === 'modified' && (
+                                    <div className="mt-2 text-xs">
+                                      <div>Access: {diff.session1_access_level}</div>
+                                      <div>Sensitive: {diff.session1_sensitive_files || '-'}</div>
+                                      <div>Hidden: {diff.session1_hidden_files || '-'}</div>
+                                      <div>Total: {diff.session1_total_files || '-'}</div>
+                                    </div>
+                                  )}
+                                  {diff.file_changes?.map((file: any, fileIndex: number) => (
+                                    <div key={fileIndex} className="mt-2 pl-4 text-xs border-l">
+                                      {file.change_type === 'removed' && <span className="text-red-500">- </span>}
+                                      {file.change_type === 'modified' && <span className="text-yellow-500">~ </span>}
+                                      {file.file_path || file.file_name}
+                                    </div>
+                                  ))}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </ResizablePanel>
+                      
+                      <ResizableHandle />
+                      
+                      <ResizablePanel defaultSize={50}>
+                        <div className="h-full p-4 space-y-2">
+                          <div className="font-mono text-sm text-muted-foreground mb-4">Current Scan</div>
+                          {diffData.differences.map((diff: any, index: number) => (
+                            <Card key={`right-${index}`} className={cn(
+                              "border-l-4",
+                              diff.change_type === 'added' && "border-l-green-500 bg-green-500/10",
+                              diff.change_type === 'modified' && "border-l-yellow-500"
+                            )}>
+                              <CardContent className="p-4">
+                                <div className="font-mono text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <Server className="h-4 w-4" />
+                                    {diff.hostname}/{diff.share_name}
+                                  </div>
+                                  {diff.change_type !== 'removed' && (
+                                    <div className="mt-2 text-xs">
+                                      <div>Access: {diff.session2_access_level}</div>
+                                      <div>Sensitive: {diff.session2_sensitive_files || '-'}</div>
+                                      <div>Hidden: {diff.session2_hidden_files || '-'}</div>
+                                      <div>Total: {diff.session2_total_files || '-'}</div>
+                                    </div>
+                                  )}
+                                  {diff.file_changes?.map((file: any, fileIndex: number) => (
+                                    <div key={fileIndex} className="mt-2 pl-4 text-xs border-l">
+                                      {file.change_type === 'added' && <span className="text-green-500">+ </span>}
+                                      {file.change_type === 'modified' && <span className="text-yellow-500">~ </span>}
+                                      {file.file_path || file.file_name}
+                                    </div>
+                                  ))}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
                   </ScrollArea>
                 </div>
               )}

@@ -667,6 +667,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
           s.id as share_id,
           s.hostname,
           s.share_name,
+          s.access_level,
           COUNT(DISTINCT sf.file_path) as sensitive_files,
           s.hidden_files,
           s.total_files
@@ -680,6 +681,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
           s.id as share_id,
           s.hostname,
           s.share_name,
+          s.access_level,
           COUNT(DISTINCT sf.file_path) as sensitive_files,
           s.hidden_files,
           s.total_files
@@ -693,6 +695,8 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
         COALESCE(s1.share_name, s2.share_name) as share_name,
         s1.share_id as session1_share_id,
         s2.share_id as session2_share_id,
+        s1.access_level as session1_access_level,
+        s2.access_level as session2_access_level,
         s1.sensitive_files as session1_sensitive_files,
         s2.sensitive_files as session2_sensitive_files,
         s1.hidden_files as session1_hidden_files,
@@ -704,7 +708,8 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
           WHEN s2.hostname IS NULL THEN 'removed'
           WHEN s1.sensitive_files != s2.sensitive_files OR 
                s1.hidden_files != s2.hidden_files OR 
-               s1.total_files != s2.total_files THEN 'modified'
+               s1.total_files != s2.total_files OR
+               s1.access_level != s2.access_level THEN 'modified'
           ELSE 'unchanged'
         END as change_type
       FROM session1_shares s1
@@ -716,6 +721,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
         OR s1.sensitive_files != s2.sensitive_files
         OR s1.hidden_files != s2.hidden_files
         OR s1.total_files != s2.total_files
+        OR s1.access_level != s2.access_level
       ORDER BY 
         CASE 
           WHEN s1.hostname IS NULL THEN 1
