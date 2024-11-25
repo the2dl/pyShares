@@ -195,6 +195,28 @@ class DatabaseHelper:
                             share_id = cur.fetchone()[0]
                             stored_count += 1
 
+                            # Add root files storage
+                            if hasattr(result, 'root_files') and result.root_files:
+                                root_files_batch = []
+                                for root_file in result.root_files:
+                                    root_files_batch.append((
+                                        share_id,
+                                        str(root_file['name'])[:255],
+                                        root_file['type'],
+                                        root_file['size'],
+                                        root_file['attributes'],
+                                        root_file['created'],
+                                        root_file['modified']
+                                    ))
+                                
+                                if root_files_batch:
+                                    execute_values(cur, """
+                                        INSERT INTO root_files
+                                        (share_id, file_name, file_type, file_size, attributes, created_time, modified_time)
+                                        VALUES %s
+                                    """, root_files_batch)
+                                    print(f"Stored {len(root_files_batch)} root files for share {share_id}")
+
                             # Store sensitive files in batches
                             if result.sensitive_files:
                                 sensitive_files_batch = []

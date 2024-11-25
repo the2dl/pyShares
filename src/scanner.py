@@ -63,7 +63,14 @@ class ShareDetails:
             'share_name': self.share_name,
             'access_level': self.access_level.value,
             'error_message': self.error_message,
-            'root_files': self.root_files,
+            'root_files': [{
+                'file_name': file['name'],
+                'file_type': file['type'],
+                'file_size': file['size'],
+                'attributes': ','.join(file['attributes']),
+                'created_time': file['created'],
+                'modified_time': file['modified']
+            } for file in self.root_files],
             'share_permissions': self.share_permissions,
             'total_files': self.total_files,
             'total_dirs': self.total_dirs,
@@ -176,21 +183,30 @@ class ShareScanner:
             attrs.append('DIR')
         if file_data.is_readonly():
             attrs.append('READ_ONLY')
+        if file_data.is_hidden():
+            attrs.append('HIDDEN')
 
-        # Some files might not have all timestamps
+        # Convert timestamps properly
+        created_time = None
+        modified_time = None
+        
         try:
-            created_time = datetime.fromtimestamp(file_data.get_ctime()).strftime('%Y-%m-%d %H:%M:%S')
+            created = file_data.get_ctime_epoch()
+            if created:
+                created_time = datetime.fromtimestamp(created).isoformat()
         except:
-            created_time = None
+            pass
 
         try:
-            modified_time = datetime.fromtimestamp(file_data.get_mtime()).strftime('%Y-%m-%d %H:%M:%S')
+            modified = file_data.get_mtime_epoch()
+            if modified:
+                modified_time = datetime.fromtimestamp(modified).isoformat()
         except:
-            modified_time = None
+            pass
 
         return {
             'name': file_data.get_longname(),
-            'type': 'Directory' if 'DIR' in attrs else 'File',
+            'type': 'Directory' if file_data.is_directory() else 'File',
             'size': file_data.get_filesize(),
             'attributes': attrs,
             'created': created_time,
@@ -200,12 +216,16 @@ class ShareScanner:
     def scan_share_root(self, smb, share_name: str) -> dict:
         """Scan root directory of share for initial enumeration"""
         try:
+            ShareScanner.console.print(f"      [cyan]Starting root scan for {share_name}[/cyan]")
             root_listing = []
             total_files = 0
             total_dirs = 0
             hidden_files = 0
 
-            for file_data in smb.listPath(share_name, '*'):
+            files = smb.listPath(share_name, '*')
+            ShareScanner.console.print(f"      [cyan]Found files in root, processing...[/cyan]")
+
+            for file_data in files:
                 name = file_data.get_longname()
                 if name in ['.', '..']:
                     continue
@@ -213,6 +233,7 @@ class ShareScanner:
                 try:
                     file_info = self.get_file_attributes(file_data)
                     root_listing.append(file_info)
+                    ShareScanner.console.print(f"      [green]Collected: {name} ({file_info['type']})[/green]")
 
                     if file_info['type'] == 'Directory':
                         total_dirs += 1
@@ -223,17 +244,18 @@ class ShareScanner:
                         hidden_files += 1
 
                 except Exception as e:
-                    print(f"Error processing file {name} in {share_name}: {str(e)}")
+                    ShareScanner.console.print(f"      [red]Error processing file {name}: {str(e)}[/red]")
                     continue
 
+            ShareScanner.console.print(f"      [cyan]Root scan complete. Found {len(root_listing)} items[/cyan]")
             return {
-                'root_listing': root_listing[:20],  # Limit to first 20 entries
+                'root_listing': root_listing,
                 'total_files': total_files,
                 'total_dirs': total_dirs,
                 'hidden_files': hidden_files
             }
         except Exception as e:
-            print(f"Error scanning root of {share_name}: {str(e)}")
+            ShareScanner.console.print(f"      [red]Error scanning root of {share_name}: {str(e)}[/red]")
             return None
 
     def get_share_permissions(self, smb, share_name: str) -> list:
@@ -433,12 +455,14 @@ class ShareScanner:
                 share_detail = ShareDetails(hostname, share_name, access_level)
                 
                 if access_level in [ShareAccess.FULL_ACCESS, ShareAccess.READ_ONLY]:
+                    ShareScanner.console.print(f"      [cyan]Starting root scan for {share_name}...[/cyan]")
                     root_info = self.scan_share_root(smb, share_name)
                     if root_info:
                         share_detail.root_files = root_info['root_listing']
                         share_detail.total_files = root_info['total_files']
                         share_detail.total_dirs = root_info['total_dirs']
                         share_detail.hidden_files = root_info['hidden_files']
+                        ShareScanner.console.print(f"      [green]Root files collected: {len(share_detail.root_files)}[/green]")
 
                     if self.config.SCAN_FOR_SENSITIVE:
                         sensitive_result = self.scan_share_for_sensitive(smb, share_name)
@@ -448,6 +472,7 @@ class ShareScanner:
                 result_queue.put(share_detail)
                 
             except Exception as e:
+                ShareScanner.console.print(f"      [red]Error in scan worker: {str(e)}[/red]")
                 result_queue.put(None)
 
         # Start the scan in a separate thread
