@@ -118,9 +118,10 @@ def with_timeout(seconds: int) -> Callable:
 class ShareScanner:
     console = Console()  # Class-level console
 
-    def __init__(self, config: Config, db_helper: DatabaseHelper):
+    def __init__(self, config: Config, db_helper: DatabaseHelper, session_id: int = None):
         self.config = config
         self.db_helper = db_helper
+        self.session_id = session_id
         self.pattern_matcher = PatternMatcher()
         self.share_stats = {
             ShareAccess.FULL_ACCESS: set(),
@@ -130,6 +131,8 @@ class ShareScanner:
         }
         self.batch_size = 1000
         self._cancel_event = threading.Event()
+        self.total_shares_processed = 0
+        self.total_sensitive_files = 0
 
     def resolve_host(self, hostname: str) -> Optional[str]:
         """Resolve hostname to IP address"""
@@ -331,8 +334,6 @@ class ShareScanner:
         ShareScanner.console.print(f"[bold]Threads:[/bold] {self.config.DEFAULT_THREADS}")
         ShareScanner.console.print(f"[bold]Timeouts:[/bold] Host={self.config.HOST_SCAN_TIMEOUT}s, Share={self.config.SCAN_TIMEOUT}s\n")
         
-        total_shares_processed = 0
-        total_sensitive_files = 0
         storage_batch = []
         
         for i in range(0, total_hosts, self.batch_size):
@@ -351,9 +352,9 @@ class ShareScanner:
                             storage_batch.extend(result['shares'])
                             
                             if len(storage_batch) >= self.batch_size:
-                                shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
-                                total_shares_processed += shares_count
-                                total_sensitive_files += sensitive_count
+                                shares_count, sensitive_count = self.db_helper.store_results(storage_batch, self.session_id)
+                                self.total_shares_processed += shares_count
+                                self.total_sensitive_files += sensitive_count
                                 storage_batch = []
                     except Exception as e:
                         pass
@@ -361,15 +362,11 @@ class ShareScanner:
         # Store any remaining results
         if storage_batch:
             try:
-                shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
-                total_shares_processed += shares_count
-                total_sensitive_files += sensitive_count
+                shares_count, sensitive_count = self.db_helper.store_results(storage_batch, self.session_id)
+                self.total_shares_processed += shares_count
+                self.total_sensitive_files += sensitive_count
             except Exception as e:
                 ShareScanner.console.print(f"[red]Error storing final results: {str(e)}[/red]")
-
-        ShareScanner.console.print("\n[bold green]Scan Summary:[/bold green]")
-        ShareScanner.console.print(f"Total shares processed: {total_shares_processed}")
-        ShareScanner.console.print(f"Total sensitive files found: {total_sensitive_files}")
 
     def write_results_csv(self, results: List[ShareResult]) -> None:
         """Write scan results to CSV file"""

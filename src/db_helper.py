@@ -123,6 +123,33 @@ class DatabaseHelper:
                         except Exception as e:
                             print(f"Warning: Index creation failed: {str(e)}")
 
+                    # Create scan_sessions table
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS scan_sessions (
+                            id SERIAL PRIMARY KEY,
+                            domain VARCHAR(255) NOT NULL,
+                            start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            end_time TIMESTAMP,
+                            total_hosts INTEGER DEFAULT 0,
+                            total_shares INTEGER DEFAULT 0,
+                            total_sensitive_files INTEGER DEFAULT 0,
+                            scan_status VARCHAR(50) DEFAULT 'running'
+                        )
+                    """)
+
+                    # Modify shares table to include session_id
+                    cur.execute("""
+                        ALTER TABLE shares 
+                        ADD COLUMN IF NOT EXISTS session_id INTEGER REFERENCES scan_sessions(id) ON DELETE CASCADE
+                    """)
+
+                    # Add indexes
+                    cur.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_shares_session_id ON shares(session_id);
+                        CREATE INDEX IF NOT EXISTS idx_scan_sessions_domain ON scan_sessions(domain);
+                        CREATE INDEX IF NOT EXISTS idx_scan_sessions_start_time ON scan_sessions(start_time);
+                    """)
+
                     conn.commit()
 
         return self._retry_operation(_init)
@@ -158,7 +185,7 @@ class DatabaseHelper:
         if self.pool:
             self.pool.putconn(conn)
 
-    def store_results(self, results: List[ShareResult]) -> tuple[int, int]:
+    def store_results(self, results: List[ShareResult], session_id: int) -> tuple[int, int]:
         """Store scan results in batches with retry mechanism"""
         def _store_batch(batch: List[ShareResult]) -> tuple[int, int]:
             with self.get_db_connection() as conn:
@@ -178,8 +205,8 @@ class DatabaseHelper:
                             cur.execute("""
                                 INSERT INTO shares
                                 (hostname, share_name, access_level, error_message,
-                                 total_files, total_dirs, hidden_files, scan_time)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                 total_files, total_dirs, hidden_files, scan_time, session_id)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                                 RETURNING id
                             """, (
                                 hostname,
@@ -189,7 +216,8 @@ class DatabaseHelper:
                                 max(0, getattr(result, 'total_files', 0)),  # Ensure non-negative
                                 max(0, getattr(result, 'total_dirs', 0)),
                                 max(0, getattr(result, 'hidden_files', 0)),
-                                result.scan_time
+                                result.scan_time,
+                                session_id
                             ))
 
                             share_id = cur.fetchone()[0]
@@ -271,3 +299,31 @@ class DatabaseHelper:
         if self.pool:
             self.pool.closeall()
             self.pool = None
+
+    def start_scan_session(self, domain: str) -> int:
+        """Start a new scan session and return its ID"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO scan_sessions (domain, scan_status)
+                    VALUES (%s, 'running')
+                    RETURNING id
+                """, (domain,))
+                session_id = cur.fetchone()[0]
+                conn.commit()
+                return session_id
+
+    def end_scan_session(self, session_id: int, total_hosts: int, total_shares: int, total_sensitive: int):
+        """Mark a scan session as complete with statistics"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE scan_sessions 
+                    SET end_time = CURRENT_TIMESTAMP,
+                        total_hosts = %s,
+                        total_shares = %s,
+                        total_sensitive_files = %s,
+                        scan_status = 'completed'
+                    WHERE id = %s
+                """, (total_hosts, total_shares, total_sensitive, session_id))
+                conn.commit()

@@ -152,13 +152,35 @@ def main(
             if not typer.confirm("Do you want to continue?"):
                 return
 
-        # Start scanning with progress tracking
+        # Start a new scan session
+        session_id = db_helper.start_scan_session(domain)
+        console.print(f"[green]Started scan session {session_id} for domain {domain}[/green]")
+
+        # Modify scanner initialization to include session_id
+        scanner = ShareScanner(config, db_helper, session_id)
+
         try:
             with console.status("[bold green]Scanning network shares...") as status:
+                total_hosts = len(computers)
                 scanner.scan_network(computers)
+                
+                # Update scan session with final statistics
+                db_helper.end_scan_session(
+                    session_id,
+                    total_hosts=total_hosts,
+                    total_shares=scanner.total_shares_processed,
+                    total_sensitive=scanner.total_sensitive_files
+                )
+                
         except KeyboardInterrupt:
             console.print("\n[yellow]Scan interrupted by user. Cleaning up...[/yellow]")
-            # Add any cleanup code here if needed
+            # Update scan session as interrupted
+            db_helper.end_scan_session(
+                session_id,
+                total_hosts=len(computers),
+                total_shares=scanner.total_shares_processed,
+                total_sensitive=scanner.total_sensitive_files
+            )
             sys.exit(1)
 
     except ValueError as ve:
