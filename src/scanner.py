@@ -133,6 +133,12 @@ class ShareScanner:
         self._cancel_event = threading.Event()
         self.total_shares_processed = 0
         self.total_sensitive_files = 0
+        self._progress_callback = None
+
+    def set_progress_callback(self, callback: Callable[[str, int, int], None]) -> None:
+        """Set callback for progress updates
+        callback(current_host: str, processed: int, total: int)"""
+        self._progress_callback = callback
 
     def resolve_host(self, hostname: str) -> Optional[str]:
         """Resolve hostname to IP address"""
@@ -329,6 +335,7 @@ class ShareScanner:
     def scan_network(self, hosts: List[str]) -> None:
         valid_hosts = [h for h in hosts if h and h != "[]"]
         total_hosts = len(valid_hosts)
+        processed_hosts = 0
         
         ShareScanner.console.print(f"\n[bold]Starting scan of {total_hosts} hosts[/bold]")
         ShareScanner.console.print(f"[bold]Threads:[/bold] {self.config.DEFAULT_THREADS}")
@@ -346,6 +353,13 @@ class ShareScanner:
                 }
                 
                 for future in as_completed(future_to_host):
+                    host = future_to_host[future]
+                    processed_hosts += 1
+                    
+                    # Call progress callback if set
+                    if self._progress_callback:
+                        self._progress_callback(host, processed_hosts, total_hosts)
+                    
                     try:
                         result = future.result()
                         if result['success'] and 'shares' in result:
@@ -357,7 +371,7 @@ class ShareScanner:
                                 self.total_sensitive_files += sensitive_count
                                 storage_batch = []
                     except Exception as e:
-                        pass
+                        ShareScanner.console.print(f"[red]Error processing {host}: {str(e)}[/red]")
 
         # Store any remaining results
         if storage_batch:

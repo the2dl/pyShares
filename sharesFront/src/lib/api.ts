@@ -347,4 +347,26 @@ export async function getShareStructure(
   const response = await fetch(`${API_BASE}/shares/${shareId}/structure?${params}`);
   if (!response.ok) throw new Error('Failed to fetch share structure');
   return response.json();
+}
+
+interface Activity {
+  type: string;
+  message: string;
+  details: string;
+  severity: string;
+  location: string;
+}
+
+export async function postActivity(activity: Activity): Promise<void> {
+  const response = await fetch(`${API_BASE}/activities`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(activity),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to post activity');
+  }
 } 

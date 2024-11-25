@@ -3,68 +3,105 @@ import { ChevronDownIcon } from '@radix-ui/react-icons';
 import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
 import { cva } from 'class-variance-authority';
 import { Link } from 'react-router-dom';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Rocket } from 'lucide-react';
+import { QuickActions } from '@/components/dashboard/quick-actions';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof NavigationMenuPrimitive.Root>
->(({ className, children, ...props }, ref) => (
-  <NavigationMenuPrimitive.Root
-    ref={ref}
-    className={cn(
-      'relative z-10 flex max-w-max flex-1 items-center justify-center',
-      className
-    )}
-    {...props}
-  >
-    <NavigationMenuList>
-      <NavigationMenuItem>
-        <Link to="/" className={navigationMenuTriggerStyle()}>
-          <svg
-            className="mr-2 h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 2.18l7 3.82v5c0 4.52-3.15 8.72-7 9.82-3.85-1.1-7-5.3-7-9.82V8l7-3.82z"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M12 7L8 11l4 4 4-4-4-4z"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          ShareSentry
-        </Link>
-      </NavigationMenuItem>
+>(({ className, children, ...props }, ref) => {
+  const [quickActionsOpen, setQuickActionsOpen] = useState(false);
 
-      <NavigationMenuItem>
-        <Link to="/" className={navigationMenuTriggerStyle()}>
-          Overview
-        </Link>
-      </NavigationMenuItem>
+  return (
+    <NavigationMenuPrimitive.Root
+      ref={ref}
+      className={cn(
+        'relative z-10 flex max-w-max flex-1 items-center justify-center',
+        className
+      )}
+      {...props}
+    >
+      <NavigationMenuList>
+        <NavigationMenuItem>
+          <Link to="/" className={navigationMenuTriggerStyle()}>
+            <svg
+              className="mr-2 h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 2.18l7 3.82v5c0 4.52-3.15 8.72-7 9.82-3.85-1.1-7-5.3-7-9.82V8l7-3.82z"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M12 7L8 11l4 4 4-4-4-4z"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            ShareSentry
+          </Link>
+        </NavigationMenuItem>
 
-      <NavigationMenuItem>
-        <Link to="/scan-comparison" className={navigationMenuTriggerStyle()}>
-          Diff
-        </Link>
-      </NavigationMenuItem>
+        <NavigationMenuItem>
+          <Link to="/" className={navigationMenuTriggerStyle()}>
+            Overview
+          </Link>
+        </NavigationMenuItem>
 
-      <NavigationMenuItem>
-        <Link to="/network-map" className={navigationMenuTriggerStyle()}>
-          Network Map
-        </Link>
-      </NavigationMenuItem>
-    </NavigationMenuList>
-  </NavigationMenuPrimitive.Root>
-));
+        <NavigationMenuItem>
+          <Link to="/scan-comparison" className={navigationMenuTriggerStyle()}>
+            Diff
+          </Link>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem>
+          <Link to="/network-map" className={navigationMenuTriggerStyle()}>
+            Network Map
+          </Link>
+        </NavigationMenuItem>
+
+        <NavigationMenuItem className="ml-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div>
+                  <Sheet open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
+                    <SheetTrigger asChild>
+                      <span>
+                        <Button variant="ghost" size="icon">
+                          <Rocket className="h-5 w-5" />
+                        </Button>
+                      </span>
+                    </SheetTrigger>
+                    <SheetContent className="w-full sm:w-[600px] overflow-y-auto p-6">
+                      <SheetHeader className="mb-6">
+                        <SheetTitle>Quick Actions</SheetTitle>
+                      </SheetHeader>
+                      <QuickActions onActionComplete={() => setQuickActionsOpen(false)} />
+                    </SheetContent>
+                  </Sheet>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>Quick Actions</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </NavigationMenuItem>
+      </NavigationMenuList>
+    </NavigationMenuPrimitive.Root>
+  );
+});
 NavigationMenu.displayName = NavigationMenuPrimitive.Root.displayName;
 
 const NavigationMenuList = React.forwardRef<
