@@ -63,36 +63,61 @@ class DatabaseHelper:
                             id SERIAL PRIMARY KEY,
                             hostname VARCHAR(255) NOT NULL,
                             share_name VARCHAR(255) NOT NULL,
-                            access_level VARCHAR(50) NOT NULL,
+                            access_level VARCHAR(50),
                             error_message TEXT,
                             total_files INTEGER DEFAULT 0,
                             total_dirs INTEGER DEFAULT 0,
                             hidden_files INTEGER DEFAULT 0,
-                            scan_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             UNIQUE(hostname, share_name, scan_time)
                         )
                     """)
 
-                    # Create sensitive_files table with constraints
+                    # Create share_permissions table
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS share_permissions (
+                            id SERIAL PRIMARY KEY,
+                            share_id INTEGER REFERENCES shares(id) ON DELETE CASCADE,
+                            permission VARCHAR(50)
+                        )
+                    """)
+
+                    # Create root_files table
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS root_files (
+                            id SERIAL PRIMARY KEY,
+                            share_id INTEGER REFERENCES shares(id) ON DELETE CASCADE,
+                            file_name VARCHAR(255) NOT NULL,
+                            file_type VARCHAR(50),
+                            file_size BIGINT,
+                            attributes TEXT[],
+                            created_time TIMESTAMP,
+                            modified_time TIMESTAMP
+                        )
+                    """)
+
+                    # Create sensitive_files table
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS sensitive_files (
                             id SERIAL PRIMARY KEY,
                             share_id INTEGER REFERENCES shares(id) ON DELETE CASCADE,
                             file_path TEXT NOT NULL,
                             file_name VARCHAR(255) NOT NULL,
-                            detection_type VARCHAR(50) NOT NULL,
-                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            detection_type VARCHAR(50),
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                             CONSTRAINT path_length_check CHECK (length(file_path) <= 4096)
                         )
                     """)
 
-                    # Create indexes with concurrently
-                    for index_sql in [
+                    # Create indexes
+                    indexes = [
                         "CREATE INDEX IF NOT EXISTS idx_shares_hostname ON shares(hostname)",
                         "CREATE INDEX IF NOT EXISTS idx_shares_scan_time ON shares(scan_time)",
                         "CREATE INDEX IF NOT EXISTS idx_sensitive_files_share_id ON sensitive_files(share_id)",
                         "CREATE INDEX IF NOT EXISTS idx_sensitive_files_detection_type ON sensitive_files(detection_type)"
-                    ]:
+                    ]
+
+                    for index_sql in indexes:
                         try:
                             cur.execute(index_sql)
                         except Exception as e:
