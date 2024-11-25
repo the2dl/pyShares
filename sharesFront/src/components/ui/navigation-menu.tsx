@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ChevronDownIcon } from '@radix-ui/react-icons';
 import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
 import { cva } from 'class-variance-authority';
+import { Link } from 'react-router-dom';
 
 import { cn } from '@/lib/utils';
 
@@ -19,11 +20,9 @@ const NavigationMenu = React.forwardRef<
   >
     <NavigationMenuList>
       <NavigationMenuItem>
-        <NavigationMenuLink
-          className={cn(
-            'group inline-flex h-9 w-max items-center justify-center rounded-md px-4 py-2 text-sm font-medium'
-          )}
-        >
+        <Link to="/" className={cn(
+          'group inline-flex h-9 w-max items-center justify-center rounded-md px-4 py-2 text-sm font-medium'
+        )}>
           <svg
             className="mr-2 h-5 w-5"
             viewBox="0 0 24 24"
@@ -45,7 +44,31 @@ const NavigationMenu = React.forwardRef<
             />
           </svg>
           ShareSentry
-        </NavigationMenuLink>
+        </Link>
+      </NavigationMenuItem>
+
+      <NavigationMenuItem>
+        <NavigationMenuTrigger>Dashboard</NavigationMenuTrigger>
+        <NavigationMenuContent>
+          <ul className="grid w-[200px] gap-3 p-4">
+            <li>
+              <Link 
+                to="/" 
+                className={navigationMenuTriggerStyle()}
+              >
+                Overview
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/scan-comparison" 
+                className={navigationMenuTriggerStyle()}
+              >
+                Scan Comparison
+              </Link>
+            </li>
+          </ul>
+        </NavigationMenuContent>
       </NavigationMenuItem>
     </NavigationMenuList>
   </NavigationMenuPrimitive.Root>
@@ -98,7 +121,7 @@ const NavigationMenuContent = React.forwardRef<
   <NavigationMenuPrimitive.Content
     ref={ref}
     className={cn(
-      'left-0 top-0 w-full data-[motion^=from-]:animate-in data-[motion^=to-]:animate-out data-[motion^=from-]:fade-in data-[motion^=to-]:fade-out data-[motion=from-end]:slide-in-from-right-52 data-[motion=from-start]:slide-in-from-left-52 data-[motion=to-end]:slide-out-to-right-52 data-[motion=to-start]:slide-out-to-left-52 md:absolute md:w-auto ',
+      'absolute left-0 top-0 w-full data-[motion^=from-]:animate-in data-[motion^=to-]:animate-out data-[motion^=from-]:fade-in data-[motion^=to-]:fade-out data-[motion=from-end]:slide-in-from-right-52 data-[motion=from-start]:slide-in-from-left-52 data-[motion=to-end]:slide-out-to-right-52 data-[motion=to-start]:slide-out-to-left-52 md:w-auto',
       className
     )}
     {...props}
@@ -115,7 +138,7 @@ const NavigationMenuViewport = React.forwardRef<
   <div className={cn('absolute left-0 top-full flex justify-center')}>
     <NavigationMenuPrimitive.Viewport
       className={cn(
-        'origin-top-center relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-90 md:w-[var(--radix-navigation-menu-viewport-width)]',
+        'origin-top-center relative mt-1.5 h-[var(--radix-navigation-menu-viewport-height)] w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-90 md:w-[var(--radix-navigation-menu-viewport-width)]',
         className
       )}
       ref={ref}
