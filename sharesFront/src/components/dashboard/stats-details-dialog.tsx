@@ -32,8 +32,11 @@ import {
   getShareDetails,
   getSensitiveFileDetails,
   getHiddenFileStats,
-  getRecentScans
+  getRecentScans,
+  getShares
 } from '@/lib/api';
+import { ShareDetails } from '@/components/dashboard/share-details';
+import { Button } from '@/components/ui/button';
 
 const ITEMS_PER_PAGE = 20;
 
@@ -66,6 +69,9 @@ export function StatsDetailsDialog({
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
   const [totalPages, setTotalPages] = useState(1);
+  const [selectedShare, setSelectedShare] = useState<Share | null>(null);
+  const [shareDetailsOpen, setShareDetailsOpen] = useState(false);
+  const [loadingShare, setLoadingShare] = useState(false);
 
   useEffect(() => {
     if (!activeStat) return;
@@ -190,6 +196,32 @@ export function StatsDetailsDialog({
     );
   };
 
+  const fetchShareDetails = async (hostname: string, shareName: string) => {
+    setLoadingShare(true);
+    try {
+      const shares = await getShares(
+        undefined,
+        undefined,
+        'hostname',
+        hostname
+      );
+      
+      const fullShare = shares.find(s => 
+        s.hostname === hostname && 
+        s.share_name === shareName
+      );
+
+      if (fullShare) {
+        setSelectedShare(fullShare);
+        setShareDetailsOpen(true);
+      }
+    } catch (err) {
+      console.error('Failed to fetch share details:', err);
+    } finally {
+      setLoadingShare(false);
+    }
+  };
+
   const getDialogContent = () => {
     if (loading) {
       return {
@@ -295,7 +327,15 @@ export function StatsDetailsDialog({
                           <span>{file.hostname}</span>
                           <span className="text-muted-foreground">/</span>
                           <Database className="h-4 w-4 text-muted-foreground" />
-                          <span>{file.share_name}</span>
+                          <Button 
+                            variant="link" 
+                            className="p-0 h-auto font-normal text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                            onClick={() => fetchShareDetails(file.hostname, file.share_name)}
+                            disabled={loadingShare}
+                          >
+                            {file.share_name}
+                            {loadingShare && <Loader2 className="ml-2 h-4 w-4 animate-spin inline" />}
+                          </Button>
                           <span className="text-muted-foreground">/</span>
                           <Folder className="h-4 w-4 text-muted-foreground" />
                           <span className="text-primary">{file.file_path}</span>
@@ -307,7 +347,7 @@ export function StatsDetailsDialog({
                             ? file.detection_types 
                             : typeof file.detection_types === 'string' 
                               ? JSON.parse(file.detection_types) 
-                              : [file.detection_type] // fallback to single type if needed
+                              : [file.detection_type]
                           ).map((type: string) => (
                             <Badge
                               key={type}
@@ -333,6 +373,14 @@ export function StatsDetailsDialog({
                 </TableBody>
               </Table>
               {renderPagination(totalPages)}
+
+              <ShareDetails
+                share={selectedShare}
+                open={shareDetailsOpen}
+                onOpenChange={setShareDetailsOpen}
+                searchQuery=""
+                detectionFilter="all"
+              />
             </>
           ),
         };
@@ -354,10 +402,35 @@ export function StatsDetailsDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data?.map((share: any) => (
-                      <TableRow key={share.id}>
+                    {data && Object.values(
+                      data.reduce((acc: any, share: any) => {
+                        const key = `${share.hostname}/${share.share_name}`;
+                        if (!acc[key]) {
+                          acc[key] = {
+                            ...share,
+                            hidden_files: share.hidden_files,
+                            total_files: share.total_files,
+                            hidden_percentage: share.hidden_percentage
+                          };
+                        }
+                        return acc;
+                      }, {})
+                    ).map((share: any) => (
+                      <TableRow key={`${share.hostname}-${share.share_name}`}>
                         <TableCell>
-                          {share.hostname}/{share.share_name}
+                          <div className="flex items-center">
+                            <span>{share.hostname}</span>
+                            <span className="text-muted-foreground">/</span>
+                            <Button 
+                              variant="link" 
+                              className="p-0 h-auto font-normal text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                              onClick={() => fetchShareDetails(share.hostname, share.share_name)}
+                              disabled={loadingShare}
+                            >
+                              {share.share_name}
+                              {loadingShare && <Loader2 className="ml-2 h-4 w-4 animate-spin inline" />}
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           {share.hidden_files.toLocaleString()}
@@ -367,10 +440,25 @@ export function StatsDetailsDialog({
                         </TableCell>
                       </TableRow>
                     ))}
+                    {!data && (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center">
+                          No data available
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
                 {renderPagination(totalPages)}
               </div>
+
+              <ShareDetails
+                share={selectedShare}
+                open={shareDetailsOpen}
+                onOpenChange={setShareDetailsOpen}
+                searchQuery=""
+                detectionFilter="all"
+              />
             </div>
           ),
         };
