@@ -279,7 +279,7 @@ export function StatsDetailsDialog({
                   <TableRow>
                     <TableHead>File Name</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Type</TableHead>
+                    <TableHead>Types</TableHead>
                     <TableHead>Detected</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -302,18 +302,28 @@ export function StatsDetailsDialog({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            file.detection_type === 'Password'
-                              ? 'bg-red-500'
-                              : file.detection_type === 'PII'
-                              ? 'bg-yellow-500'
-                              : 'bg-blue-500'
-                          }
-                        >
-                          {file.detection_type}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {(Array.isArray(file.detection_types) 
+                            ? file.detection_types 
+                            : typeof file.detection_types === 'string' 
+                              ? JSON.parse(file.detection_types) 
+                              : [file.detection_type] // fallback to single type if needed
+                          ).map((type: string) => (
+                            <Badge
+                              key={type}
+                              variant="secondary"
+                              className={
+                                type.toLowerCase() === 'password'
+                                  ? 'bg-red-500'
+                                  : type.toLowerCase() === 'pii'
+                                  ? 'bg-yellow-500'
+                                  : 'bg-blue-500'
+                              }
+                            >
+                              {type}
+                            </Badge>
+                          ))}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {format(new Date(file.created_at), 'MMM d, yyyy')}

@@ -15,7 +15,7 @@ export interface SensitiveFile {
   share_id: number;
   file_path: string;
   file_name: string;
-  detection_type: string;
+  detection_type: DetectionType;
   created_at: Date;
 }
 
@@ -46,7 +46,7 @@ export interface Activity {
   severity: 'high' | 'medium' | 'low' | 'info';
 }
 
-export type DetectionType = 'Password' | 'PII' | 'Config' | 'Key' | 'Certificate';
+export type DetectionType = 'credential' | 'pii' | 'financial' | 'hr' | 'security' | 'sensitive';
 
 export interface ScanSession {
   id: number;

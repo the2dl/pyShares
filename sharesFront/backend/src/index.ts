@@ -33,20 +33,8 @@ app.use(express.json());
 // Get all shares with filtering
 app.get('/api/shares', async (req, res) => {
   try {
-    const { search, detection_type } = req.query;
+    const { search, detection_type, session_id } = req.query;
     
-    // First, let's check if there are any matching root files
-    if (search) {
-      const debugQuery = `
-        SELECT COUNT(*) as count 
-        FROM root_files 
-        WHERE file_name ILIKE $1
-      `;
-      const debugResult = await pool.query(debugQuery, [`%${search}%`]);
-      console.log(`Debug: Found ${debugResult.rows[0].count} matching root files for search "${search}"`);
-    }
-    
-    // Rest of the query remains the same
     let query = `
       SELECT 
         s.*,
@@ -62,6 +50,12 @@ app.get('/api/shares', async (req, res) => {
     
     const params: any[] = [];
     let paramIndex = 1;
+
+    if (session_id) {
+      query += ` AND s.session_id = $${paramIndex}`;
+      params.push(session_id);
+      paramIndex++;
+    }
 
     if (search) {
       query += ` AND (
@@ -110,8 +104,12 @@ app.get('/api/shares/:id/sensitive-files', async (req, res) => {
     const limitNum = parseInt(limit as string);
     const offset = (pageNum - 1) * limitNum;
     
-    // Get total count first
-    let countQuery = 'SELECT COUNT(*) FROM sensitive_files WHERE share_id = $1';
+    // Get total count first (counting unique files)
+    let countQuery = `
+      SELECT COUNT(DISTINCT file_path) 
+      FROM sensitive_files 
+      WHERE share_id = $1
+    `;
     const countParams: any[] = [id];
     
     if (detection_type && detection_type !== 'all') {
@@ -127,8 +125,18 @@ app.get('/api/shares/:id/sensitive-files', async (req, res) => {
     const countResult = await pool.query(countQuery, countParams);
     const totalCount = parseInt(countResult.rows[0].count);
     
-    // Get paginated data
-    let query = 'SELECT * FROM sensitive_files WHERE share_id = $1';
+    // Get paginated data with aggregated detection types
+    let query = `
+      SELECT 
+        MIN(id) as id,
+        share_id,
+        file_name,
+        file_path,
+        array_agg(DISTINCT detection_type)::text[] as detection_types,
+        MIN(created_at) as created_at
+      FROM sensitive_files 
+      WHERE share_id = $1
+    `;
     const params: any[] = [id];
     
     if (detection_type && detection_type !== 'all') {
@@ -141,7 +149,11 @@ app.get('/api/shares/:id/sensitive-files', async (req, res) => {
       query += ` AND (file_name ILIKE $${params.length} OR file_path ILIKE $${params.length})`;
     }
     
-    query += ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    query += `
+      GROUP BY share_id, file_name, file_path
+      ORDER BY MIN(created_at) DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
     params.push(limitNum, offset);
     
     const result = await pool.query(query, params);
@@ -202,25 +214,55 @@ app.get('/api/shares/:id/root-files', async (req, res) => {
 // Add this new endpoint
 app.get('/api/stats', async (req, res) => {
   try {
-    // Get total shares
-    const sharesResult = await pool.query('SELECT COUNT(*) FROM shares');
-    const totalShares = parseInt(sharesResult.rows[0].count);
+    // Get unique shares across all sessions
+    const uniqueSharesQuery = `
+      SELECT COUNT(DISTINCT concat(hostname, '/', share_name)) as count
+      FROM shares
+    `;
+    const sharesResult = await pool.query(uniqueSharesQuery);
+    const uniqueShares = parseInt(sharesResult.rows[0].count);
 
-    // Get total sensitive files
-    const sensitiveResult = await pool.query('SELECT COUNT(*) FROM sensitive_files');
-    const totalSensitiveFiles = parseInt(sensitiveResult.rows[0].count);
+    // Get total shares (non-unique)
+    const totalSharesQuery = 'SELECT COUNT(*) FROM shares';
+    const totalSharesResult = await pool.query(totalSharesQuery);
+    const totalShares = parseInt(totalSharesResult.rows[0].count);
+
+    // Get unique sensitive files across all sessions
+    const uniqueSensitiveQuery = `
+      SELECT COUNT(DISTINCT concat(s.hostname, '/', s.share_name, '/', sf.file_path, '/', sf.file_name)) as count
+      FROM sensitive_files sf
+      JOIN shares s ON sf.share_id = s.id
+    `;
+    const sensitiveResult = await pool.query(uniqueSensitiveQuery);
+    const uniqueSensitiveFiles = parseInt(sensitiveResult.rows[0].count);
+
+    // Get total sensitive files (non-unique)
+    const totalSensitiveQuery = 'SELECT COUNT(*) FROM sensitive_files';
+    const totalSensitiveResult = await pool.query(totalSensitiveQuery);
+    const totalSensitiveFiles = parseInt(totalSensitiveResult.rows[0].count);
+
+    // Get unique hidden files count
+    const uniqueHiddenQuery = `
+      SELECT COUNT(DISTINCT concat(hostname, '/', share_name)) as count
+      FROM shares
+      WHERE hidden_files > 0
+    `;
+    const hiddenResult = await pool.query(uniqueHiddenQuery);
+    const uniqueHiddenFiles = parseInt(hiddenResult.rows[0].count);
 
     // Get total hidden files
-    const hiddenResult = await pool.query('SELECT SUM(hidden_files) FROM shares');
-    const totalHiddenFiles = parseInt(hiddenResult.rows[0].sum || '0');
+    const totalHiddenResult = await pool.query('SELECT SUM(hidden_files) FROM shares');
+    const totalHiddenFiles = parseInt(totalHiddenResult.rows[0].sum || '0');
 
-    // Calculate risk score
+    // Calculate risk score (using unique counts)
     const riskQuery = `
       SELECT 
         ROUND(
           (
-            (COUNT(DISTINCT sf.share_id)::float / NULLIF(COUNT(DISTINCT s.id), 0)::float) * 50 +
-            (SUM(s.hidden_files)::float / NULLIF(SUM(s.total_files), 0)::float) * 50
+            (COUNT(DISTINCT concat(s.hostname, '/', s.share_name, '/', sf.file_path, '/', sf.file_name))::float / 
+             NULLIF(COUNT(DISTINCT concat(s.hostname, '/', s.share_name)), 0)::float) * 50 +
+            (COUNT(DISTINCT CASE WHEN s.hidden_files > 0 THEN concat(s.hostname, '/', s.share_name) END)::float / 
+             NULLIF(COUNT(DISTINCT concat(s.hostname, '/', s.share_name)), 0)::float) * 50
           )::numeric,
           1
         ) as risk_score
@@ -230,21 +272,14 @@ app.get('/api/stats', async (req, res) => {
     const riskResult = await pool.query(riskQuery);
     const riskScore = parseFloat(riskResult.rows[0].risk_score || '0');
 
-    // Get recent scans count (last 24 hours)
-    const scansQuery = `
-      SELECT COUNT(*) 
-      FROM shares 
-      WHERE scan_time > NOW() - INTERVAL '24 hours'
-    `;
-    const scansResult = await pool.query(scansQuery);
-    const recentScans = parseInt(scansResult.rows[0].count);
-
     res.json({
+      uniqueShares,
       totalShares,
+      uniqueSensitiveFiles,
       totalSensitiveFiles,
+      uniqueHiddenFiles,
       totalHiddenFiles,
       riskScore,
-      recentScans,
     });
   } catch (err) {
     console.error('Failed to fetch stats:', err);
@@ -291,30 +326,39 @@ app.get('/api/shares/details', async (req, res) => {
   }
 });
 
-// Get sensitive file details with pagination
+// Add or update the getSensitiveFileDetails endpoint
 app.get('/api/sensitive-files/details', async (req, res) => {
   try {
     const { page = '1', limit = '20' } = req.query;
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
-    // Get total count
-    const countResult = await pool.query('SELECT COUNT(*) FROM sensitive_files');
+
+    // Get total count of unique files
+    const countQuery = `
+      SELECT COUNT(DISTINCT file_path) 
+      FROM sensitive_files
+    `;
+    const countResult = await pool.query(countQuery);
     const totalCount = parseInt(countResult.rows[0].count);
-    
-    // Get paginated sensitive files with share info
+
+    // Get paginated data with aggregated detection types
     const query = `
       SELECT 
-        sf.*,
+        MIN(sf.id) as id,
+        sf.file_name,
+        sf.file_path,
         s.hostname,
-        s.share_name
+        s.share_name,
+        array_agg(DISTINCT sf.detection_type)::text[] as detection_types,
+        MIN(sf.created_at) as created_at
       FROM sensitive_files sf
       JOIN shares s ON sf.share_id = s.id
-      ORDER BY sf.created_at DESC
+      GROUP BY sf.file_name, sf.file_path, s.hostname, s.share_name
+      ORDER BY MIN(sf.created_at) DESC
       LIMIT $1 OFFSET $2
     `;
-    
+
     const result = await pool.query(query, [limit, offset]);
-    
+
     res.json({
       data: result.rows,
       pagination: {
@@ -609,7 +653,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
           s.id as share_id,
           s.hostname,
           s.share_name,
-          COUNT(sf.id) as sensitive_files,
+          COUNT(DISTINCT sf.file_path) as sensitive_files,
           s.hidden_files,
           s.total_files
         FROM shares s
@@ -622,7 +666,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
           s.id as share_id,
           s.hostname,
           s.share_name,
-          COUNT(sf.id) as sensitive_files,
+          COUNT(DISTINCT sf.file_path) as sensitive_files,
           s.hidden_files,
           s.total_files
         FROM shares s
@@ -676,26 +720,34 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
         // Compare sensitive files
         const sensitiveFilesQuery = `
           WITH session1_files AS (
-            SELECT sf.file_name, sf.file_path, sf.detection_type
+            SELECT 
+              sf.file_name, 
+              sf.file_path,
+              array_agg(DISTINCT sf.detection_type) as detection_types
             FROM sensitive_files sf
             JOIN shares s ON sf.share_id = s.id
             WHERE s.id = $1
+            GROUP BY sf.file_name, sf.file_path
           ),
           session2_files AS (
-            SELECT sf.file_name, sf.file_path, sf.detection_type
+            SELECT 
+              sf.file_name, 
+              sf.file_path,
+              array_agg(DISTINCT sf.detection_type) as detection_types
             FROM sensitive_files sf
             JOIN shares s ON sf.share_id = s.id
             WHERE s.id = $2
+            GROUP BY sf.file_name, sf.file_path
           )
           SELECT 
             COALESCE(f1.file_name, f2.file_name) as file_name,
             COALESCE(f1.file_path, f2.file_path) as file_path,
-            f1.detection_type as old_detection_type,
-            f2.detection_type as new_detection_type,
+            f1.detection_types as old_detection_types,
+            f2.detection_types as new_detection_types,
             CASE 
               WHEN f1.file_name IS NULL THEN 'added'
               WHEN f2.file_name IS NULL THEN 'removed'
-              WHEN f1.detection_type != f2.detection_type THEN 'modified'
+              WHEN f1.detection_types != f2.detection_types THEN 'modified'
             END as change_type
           FROM session1_files f1
           FULL OUTER JOIN session2_files f2 
@@ -703,7 +755,7 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
             AND f1.file_path = f2.file_path
           WHERE f1.file_name IS NULL 
             OR f2.file_name IS NULL 
-            OR f1.detection_type != f2.detection_type
+            OR f1.detection_types != f2.detection_types
         `;
         
         const fileChanges = await pool.query(

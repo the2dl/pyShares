@@ -127,8 +127,8 @@ export function ScanDiff() {
         </div>
       </nav>
 
-      <div className="container mx-auto p-4">
-        <Breadcrumb className="mb-4">
+      <div className="container mx-auto p-6">
+        <Breadcrumb className="mb-6">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
@@ -142,7 +142,7 @@ export function ScanDiff() {
           </BreadcrumbList>
         </Breadcrumb>
 
-        <Card>
+        <Card className="min-h-[800px]">
           <CardHeader>
             <CardTitle>Scan Comparison</CardTitle>
           </CardHeader>
@@ -284,7 +284,7 @@ export function ScanDiff() {
                   </div>
 
                   {/* Detailed Changes */}
-                  <ScrollArea className="h-[400px] rounded-md border">
+                  <ScrollArea className="h-[600px] rounded-md border">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -362,18 +362,64 @@ export function ScanDiff() {
                                             </TableCell>
                                             <TableCell>
                                               <span className="font-mono text-sm">
-                                                {file.file_path}/{file.file_name}
+                                                {file.file_path 
+                                                  ? `${file.file_path}/${file.file_name}`
+                                                  : file.file_name}
                                               </span>
                                             </TableCell>
                                             <TableCell>
                                               {file.change_type === 'modified' ? (
-                                                <span className="text-muted-foreground">
-                                                  {file.old_detection_type} → {file.new_detection_type}
-                                                </span>
+                                                <div className="flex flex-wrap gap-1">
+                                                  <span className="text-muted-foreground">
+                                                    {(Array.isArray(file.old_detection_types) 
+                                                      ? file.old_detection_types 
+                                                      : typeof file.old_detection_types === 'string'
+                                                        ? JSON.parse(file.old_detection_types)
+                                                        : [file.old_detection_type]
+                                                    ).map((type: string) => (
+                                                      <Badge key={type} variant="outline" className="mr-1">
+                                                        {type}
+                                                      </Badge>
+                                                    ))}
+                                                    →
+                                                    {(Array.isArray(file.new_detection_types)
+                                                      ? file.new_detection_types
+                                                      : typeof file.new_detection_types === 'string'
+                                                        ? JSON.parse(file.new_detection_types)
+                                                        : [file.new_detection_type]
+                                                    ).map((type: string) => (
+                                                      <Badge key={type} variant="outline" className="ml-1">
+                                                        {type}
+                                                      </Badge>
+                                                    ))}
+                                                  </span>
+                                                </div>
                                               ) : file.change_type === 'added' ? (
-                                                file.new_detection_type
+                                                <div className="flex flex-wrap gap-1">
+                                                  {(Array.isArray(file.new_detection_types)
+                                                    ? file.new_detection_types
+                                                    : typeof file.new_detection_types === 'string'
+                                                      ? JSON.parse(file.new_detection_types)
+                                                      : [file.new_detection_type]
+                                                  ).map((type: string) => (
+                                                    <Badge key={type} variant="outline">
+                                                      {type}
+                                                    </Badge>
+                                                  ))}
+                                                </div>
                                               ) : (
-                                                file.old_detection_type
+                                                <div className="flex flex-wrap gap-1">
+                                                  {(Array.isArray(file.old_detection_types)
+                                                    ? file.old_detection_types
+                                                    : typeof file.old_detection_types === 'string'
+                                                      ? JSON.parse(file.old_detection_types)
+                                                      : [file.old_detection_type]
+                                                  ).map((type: string) => (
+                                                    <Badge key={type} variant="outline">
+                                                      {type}
+                                                    </Badge>
+                                                  ))}
+                                                </div>
                                               )}
                                             </TableCell>
                                           </TableRow>

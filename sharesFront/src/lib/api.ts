@@ -4,7 +4,8 @@ export async function getShares(
   search?: string, 
   detectionType?: DetectionType,
   filterType?: 'hostname' | 'share_name',
-  filterValue?: string
+  filterValue?: string,
+  sessionId?: number
 ): Promise<Share[]> {
   const params = new URLSearchParams();
   
@@ -19,6 +20,10 @@ export async function getShares(
   if (filterType && filterValue) {
     params.append('filter_type', filterType);
     params.append('filter_value', filterValue);
+  }
+
+  if (sessionId) {
+    params.append('session_id', sessionId.toString());
   }
   
   console.log('Fetching shares with params:', Object.fromEntries(params));
@@ -77,11 +82,13 @@ export async function getSensitiveFiles(
 }
 
 interface ShareStats {
+  uniqueShares: number;
   totalShares: number;
+  uniqueSensitiveFiles: number;
   totalSensitiveFiles: number;
+  uniqueHiddenFiles: number;
   totalHiddenFiles: number;
   riskScore: number;
-  recentScans: number;
 }
 
 export async function getShareStats(): Promise<ShareStats> {

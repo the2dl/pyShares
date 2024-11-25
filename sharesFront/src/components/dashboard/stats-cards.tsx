@@ -68,20 +68,23 @@ export function StatsCards() {
     <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <DataCard
-          title="Total Shares"
-          value={stats.totalShares.toLocaleString()}
+          title="Unique Shares"
+          value={stats.uniqueShares.toLocaleString()}
+          description={`${stats.totalShares.toLocaleString()} total scanned`}
           icon={<FolderSync className="h-4 w-4 text-muted-foreground" />}
           onClick={() => setActiveStat('shares')}
         />
         <DataCard
-          title="Sensitive Files"
-          value={stats.totalSensitiveFiles.toLocaleString()}
+          title="Unique Sensitive Files"
+          value={stats.uniqueSensitiveFiles.toLocaleString()}
+          description={`${stats.totalSensitiveFiles.toLocaleString()} total found`}
           icon={<FileWarning className="h-4 w-4 text-muted-foreground" />}
           onClick={() => setActiveStat('sensitive')}
         />
         <DataCard
-          title="Hidden Files"
-          value={stats.totalHiddenFiles.toLocaleString()}
+          title="Unique Hidden Files"
+          value={stats.uniqueHiddenFiles.toLocaleString()}
+          description={`${stats.totalHiddenFiles.toLocaleString()} total found`}
           icon={<ShieldAlert className="h-4 w-4 text-muted-foreground" />}
           onClick={() => setActiveStat('hidden')}
         />

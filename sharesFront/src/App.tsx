@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
-import { getShares } from '@/lib/api';
+import { getShares, getScanSessions } from '@/lib/api';
 import {
   Select,
   SelectContent,
@@ -45,6 +45,9 @@ import {
 } from "@/components/ui/sheet";
 import { ActivityIcon } from "lucide-react";
 import { ScanDiff } from '@/components/dashboard/scan-diff';
+import { Link } from 'react-router-dom';
+import { navigationMenuTriggerStyle } from "@/components/ui/navigation-menu"
+import { format } from 'date-fns';
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,8 +59,29 @@ function App() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'hostname' | 'share_name'>('all');
   const [filterValue, setFilterValue] = useState('');
+  const [sessions, setSessions] = useState<ScanSession[]>([]);
+  const [selectedSession, setSelectedSession] = useState<string>('all');
 
-  // Function to fetch shares from the API
+  useEffect(() => {
+    const fetchSessions = async () => {
+      try {
+        const data = await getScanSessions();
+        const completedSessions = data.filter(s => s.scan_status === 'completed');
+        setSessions(completedSessions);
+        
+        if (completedSessions.length > 0) {
+          const latestSession = completedSessions.sort(
+            (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+          )[0];
+          setSelectedSession(latestSession.id.toString());
+        }
+      } catch (error) {
+        console.error('Failed to fetch sessions:', error);
+      }
+    };
+    fetchSessions();
+  }, []);
+
   const fetchShares = useCallback(async () => {
     setLoading(true);
     try {
@@ -65,7 +89,8 @@ function App() {
         searchQuery, 
         detectionFilter === 'all' ? undefined : detectionFilter,
         filterType === 'all' ? undefined : filterType,
-        filterValue
+        filterValue,
+        selectedSession === 'all' ? undefined : parseInt(selectedSession)
       );
       setShares(data);
     } catch (error) {
@@ -73,12 +98,11 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, detectionFilter, filterType, filterValue]);
+  }, [searchQuery, detectionFilter, filterType, filterValue, selectedSession]);
 
-  // Update shares when filter changes
   useEffect(() => {
     fetchShares();
-  }, [fetchShares, detectionFilter, filterType, filterValue]);
+  }, [fetchShares, detectionFilter, filterType, filterValue, selectedSession]);
 
   const handleRefresh = useCallback(async () => {
     await fetchShares();
@@ -102,32 +126,25 @@ function App() {
             <NavigationMenu>
               <NavigationMenuList>
                 <NavigationMenuItem>
-                  <NavigationMenuLink 
-                    className="text-lg font-semibold"
-                    href="/"
-                  >
+                  <Link to="/" className={navigationMenuTriggerStyle()}>
+                    <Logo className="mr-2 h-5 w-5" />
                     FileShare Scanner
-                  </NavigationMenuLink>
+                  </Link>
                 </NavigationMenuItem>
+
                 <NavigationMenuItem>
                   <NavigationMenuTrigger>Dashboard</NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <ul className="grid w-[200px] gap-3 p-4">
                       <li>
-                        <NavigationMenuLink href="/shares">Shares</NavigationMenuLink>
+                        <Link to="/" className={navigationMenuTriggerStyle()}>
+                          Overview
+                        </Link>
                       </li>
                       <li>
-                        <NavigationMenuLink href="/sensitive">Sensitive Files</NavigationMenuLink>
-                      </li>
-                    </ul>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger>Settings</NavigationMenuTrigger>
-                  <NavigationMenuContent>
-                    <ul className="grid w-[200px] gap-3 p-4">
-                      <li>
-                        <NavigationMenuLink href="/settings">Preferences</NavigationMenuLink>
+                        <Link to="/scan-comparison" className={navigationMenuTriggerStyle()}>
+                          Scan Comparison
+                        </Link>
                       </li>
                     </ul>
                   </NavigationMenuContent>
@@ -169,7 +186,6 @@ function App() {
 
             <div className="grid gap-4 md:grid-cols-1">
               <TrendCharts />
-              <ScanDiff />
             </div>
 
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -194,6 +210,35 @@ function App() {
                 </div>
 
                 <div className="flex flex-wrap gap-4">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Select value={selectedSession} onValueChange={setSelectedSession}>
+                            <SelectTrigger className="w-[300px]">
+                              <SelectValue placeholder="Select scan session" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All scan sessions</SelectItem>
+                              {sessions
+                                .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+                                .map((session) => (
+                                  <SelectItem key={session.id} value={session.id.toString()}>
+                                    {format(new Date(session.start_time), 'PPpp')} 
+                                    ({session.total_shares} shares)
+                                    {session.id.toString() === selectedSession && " (Latest)"}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Filter results by scan session</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
                   <Select
                     value={filterType}
                     onValueChange={(value) => setFilterType(value as 'all' | 'hostname' | 'share_name')}

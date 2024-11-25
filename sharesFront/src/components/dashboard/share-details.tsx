@@ -46,17 +46,23 @@ interface ShareDetailsProps {
   detectionFilter: DetectionType | 'all';
 }
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes: number | string): string {
+  const size = typeof bytes === 'string' ? parseFloat(bytes) : bytes;
+  
+  if (isNaN(size) || size === null) {
+    return '0 B';
+  }
+
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let size = bytes;
+  let convertedSize = size;
   let unitIndex = 0;
 
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
+  while (convertedSize >= 1024 && unitIndex < units.length - 1) {
+    convertedSize /= 1024;
     unitIndex++;
   }
 
-  return `${size.toFixed(2)} ${units[unitIndex]}`;
+  return `${convertedSize.toFixed(2)} ${units[unitIndex]}`;
 }
 
 interface RootFile {
@@ -385,7 +391,7 @@ export function ShareDetails({
                           <TableRow>
                             <TableHead>File Name</TableHead>
                             <TableHead>Path</TableHead>
-                            <TableHead>Type</TableHead>
+                            <TableHead>Types</TableHead>
                             <TableHead>Detection Time</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -402,9 +408,18 @@ export function ShareDetails({
                                 {file.file_path}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline">
-                                  {file.detection_type}
-                                </Badge>
+                                <div className="flex flex-wrap gap-1">
+                                  {(Array.isArray(file.detection_types) 
+                                    ? file.detection_types 
+                                    : typeof file.detection_types === 'string' 
+                                      ? JSON.parse(file.detection_types) 
+                                      : []
+                                  ).map((type: string) => (
+                                    <Badge key={type} variant="outline">
+                                      {type}
+                                    </Badge>
+                                  ))}
+                                </div>
                               </TableCell>
                               <TableCell>
                                 {format(new Date(file.created_at), 'MMM d, yyyy HH:mm')}

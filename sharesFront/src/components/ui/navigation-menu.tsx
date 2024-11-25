@@ -20,9 +20,7 @@ const NavigationMenu = React.forwardRef<
   >
     <NavigationMenuList>
       <NavigationMenuItem>
-        <Link to="/" className={cn(
-          'group inline-flex h-9 w-max items-center justify-center rounded-md px-4 py-2 text-sm font-medium'
-        )}>
+        <Link to="/" className={navigationMenuTriggerStyle()}>
           <svg
             className="mr-2 h-5 w-5"
             viewBox="0 0 24 24"
@@ -48,27 +46,15 @@ const NavigationMenu = React.forwardRef<
       </NavigationMenuItem>
 
       <NavigationMenuItem>
-        <NavigationMenuTrigger>Dashboard</NavigationMenuTrigger>
-        <NavigationMenuContent>
-          <ul className="grid w-[200px] gap-3 p-4">
-            <li>
-              <Link 
-                to="/" 
-                className={navigationMenuTriggerStyle()}
-              >
-                Overview
-              </Link>
-            </li>
-            <li>
-              <Link 
-                to="/scan-comparison" 
-                className={navigationMenuTriggerStyle()}
-              >
-                Scan Comparison
-              </Link>
-            </li>
-          </ul>
-        </NavigationMenuContent>
+        <Link to="/" className={navigationMenuTriggerStyle()}>
+          Overview
+        </Link>
+      </NavigationMenuItem>
+
+      <NavigationMenuItem>
+        <Link to="/scan-comparison" className={navigationMenuTriggerStyle()}>
+          Diff
+        </Link>
       </NavigationMenuItem>
     </NavigationMenuList>
   </NavigationMenuPrimitive.Root>
