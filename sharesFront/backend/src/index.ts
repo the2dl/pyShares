@@ -33,56 +33,65 @@ app.use(express.json());
 // Get all shares with filtering
 app.get('/api/shares', async (req, res) => {
   try {
-    const { search, detection_type, session_id } = req.query;
+    const { 
+      search, 
+      detection_type, 
+      filter_type, 
+      filter_value,
+      session_id,
+      page = '1', 
+      limit = '20' 
+    } = req.query;
+    
+    console.log('Received request with params:', {
+      search, detection_type, filter_type, filter_value, session_id, page, limit
+    });
+
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
     
     let query = `
       SELECT 
         s.*,
-        COUNT(DISTINCT CASE 
-          WHEN ${detection_type ? `sf.detection_type = $3 AND` : ''} 
-          sf.id IS NOT NULL THEN sf.id 
-          END
-        ) as sensitive_file_count
+        COUNT(DISTINCT sf.id) as sensitive_file_count,
+        COUNT(DISTINCT rf.id) as total_files
       FROM shares s
       LEFT JOIN sensitive_files sf ON s.id = sf.share_id
+      LEFT JOIN root_files rf ON s.id = rf.share_id
       WHERE 1=1
     `;
     
     const params: any[] = [];
     let paramIndex = 1;
 
+    // Add session_id filter
     if (session_id) {
       query += ` AND s.session_id = $${paramIndex}`;
       params.push(session_id);
       paramIndex++;
+      console.log('Added session filter:', session_id);
     }
 
-    if (search) {
-      query += ` AND (
-        s.hostname ILIKE $${paramIndex} OR 
-        s.share_name ILIKE $${paramIndex} OR
-        EXISTS (
-          SELECT 1 FROM sensitive_files sf2 
-          WHERE sf2.share_id = s.id 
-          AND (sf2.file_name ILIKE $${paramIndex} OR sf2.file_path ILIKE $${paramIndex})
-        ) OR
-        EXISTS (
-          SELECT 1 FROM root_files rf 
-          WHERE rf.share_id = s.id 
-          AND rf.file_name ILIKE $${paramIndex}
-        )
-      )`;
-      params.push(`%${search}%`);
+    if (filter_type && filter_value) {
+      const columnName = filter_type === 'hostname' ? 's.hostname' : 's.share_name';
+      query += ` AND ${columnName} ILIKE $${paramIndex}`;
+      params.push(`%${filter_value}%`);
       paramIndex++;
+      console.log('Added filter:', { columnName, value: filter_value });
     }
 
-    if (detection_type && detection_type !== 'all') {
-      params.push(detection_type);
-    }
-
-    query += ` GROUP BY s.id ORDER BY s.hostname, s.share_name`;
-
-    console.log('Executing query:', query, 'with params:', params);
+    query += `
+      GROUP BY s.id 
+      HAVING COUNT(DISTINCT sf.id) > 0 OR COUNT(DISTINCT rf.id) > 0
+      ORDER BY 
+        COUNT(DISTINCT sf.id) DESC,
+        s.hostname, 
+        s.share_name
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+    
+    params.push(limit, offset);
+    
+    console.log('Executing query:', { query, params });
     const result = await pool.query(query, params);
     console.log(`Found ${result.rows.length} shares`);
     
@@ -805,6 +814,73 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
 };
 
 app.get('/api/scan-sessions/compare', compareSessions);
+
+// Get share structure with files
+app.get('/api/shares/:id/structure', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { page = '1', limit = '10' } = req.query;
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    // Get share statistics with a single query
+    const statsQuery = `
+      SELECT 
+        COUNT(DISTINCT rf.id) as total_files,
+        COUNT(DISTINCT sf.id) as total_sensitive
+      FROM shares s
+      LEFT JOIN root_files rf ON s.id = rf.share_id
+      LEFT JOIN sensitive_files sf ON s.id = sf.share_id
+      WHERE s.id = $1
+    `;
+    
+    // Get paginated files with a LIMIT clause
+    const filesQuery = `
+      WITH combined_files AS (
+        SELECT 
+          rf.id,
+          rf.file_name,
+          '' as file_path,
+          false as is_sensitive,
+          ARRAY[]::text[] as detection_types,
+          rf.file_size,
+          rf.created_time
+        FROM root_files rf
+        WHERE rf.share_id = $1
+        
+        UNION ALL
+        
+        SELECT 
+          sf.id,
+          sf.file_name,
+          sf.file_path,
+          true as is_sensitive,
+          array_agg(DISTINCT sf.detection_type)::text[] as detection_types,
+          0 as file_size,
+          sf.created_at as created_time
+        FROM sensitive_files sf
+        WHERE sf.share_id = $1
+        GROUP BY sf.id, sf.file_name, sf.file_path, sf.created_at
+      )
+      SELECT * FROM combined_files
+      ORDER BY created_time DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const [statsResult, filesResult] = await Promise.all([
+      pool.query(statsQuery, [id]),
+      pool.query(filesQuery, [id, limit, offset])
+    ]);
+
+    res.json({
+      files: filesResult.rows,
+      total_files: parseInt(statsResult.rows[0].total_files),
+      total_sensitive: parseInt(statsResult.rows[0].total_sensitive)
+    });
+  } catch (err) {
+    console.error('Failed to fetch share structure:', err);
+    res.status(500).json({ error: 'Failed to fetch share structure' });
+  }
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

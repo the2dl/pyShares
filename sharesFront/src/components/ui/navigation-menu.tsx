@@ -56,6 +56,12 @@ const NavigationMenu = React.forwardRef<
           Diff
         </Link>
       </NavigationMenuItem>
+
+      <NavigationMenuItem>
+        <Link to="/network-map" className={navigationMenuTriggerStyle()}>
+          Network Map
+        </Link>
+      </NavigationMenuItem>
     </NavigationMenuList>
   </NavigationMenuPrimitive.Root>
 ));

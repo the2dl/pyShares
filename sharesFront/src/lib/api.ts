@@ -5,37 +5,47 @@ export async function getShares(
   detectionType?: DetectionType,
   filterType?: 'hostname' | 'share_name',
   filterValue?: string,
-  sessionId?: number
+  sessionId?: number,
+  page = 1,
+  limit = 20
 ): Promise<Share[]> {
   const params = new URLSearchParams();
   
-  if (search) {
-    params.append('search', search);
-  }
+  console.log('API getShares called with:', {
+    search, detectionType, filterType, filterValue, sessionId, page, limit
+  });
   
-  if (detectionType) {
-    params.append('detection_type', detectionType);
-  }
-
+  if (search) params.append('search', search);
+  if (detectionType) params.append('detection_type', detectionType);
   if (filterType && filterValue) {
     params.append('filter_type', filterType);
     params.append('filter_value', filterValue);
   }
-
   if (sessionId) {
     params.append('session_id', sessionId.toString());
+    console.log('Adding session_id to params:', sessionId);
   }
   
-  console.log('Fetching shares with params:', Object.fromEntries(params));
-  const response = await fetch(`${API_BASE}/shares?${params}`);
+  params.append('page', page.toString());
+  params.append('limit', limit.toString());
+  
+  const url = `${API_BASE}/shares?${params}`;
+  console.log('Fetching URL:', url);
+
+  const response = await fetch(url, {
+    headers: {
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache'
+    }
+  });
   
   if (!response.ok) {
-    console.error('Failed to fetch shares:', await response.text());
+    console.error('API error:', await response.text());
     throw new Error('Failed to fetch shares');
   }
   
   const data = await response.json();
-  console.log(`Found ${data.length} shares`);
+  console.log('API response:', data);
   return data;
 }
 
@@ -307,5 +317,34 @@ export async function compareScanSessions(
     throw new Error('Failed to compare sessions');
   }
   
+  return response.json();
+}
+
+interface ShareStructure {
+  files: {
+    id: number;
+    file_name: string;
+    file_path: string;
+    is_sensitive: boolean;
+    detection_types: string[];
+    file_size: number;
+    created_time: string;
+  }[];
+  total_files: number;
+  total_sensitive: number;
+}
+
+export async function getShareStructure(
+  shareId: number,
+  page = 1,
+  limit = 10
+): Promise<ShareStructure> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+  });
+
+  const response = await fetch(`${API_BASE}/shares/${shareId}/structure?${params}`);
+  if (!response.ok) throw new Error('Failed to fetch share structure');
   return response.json();
 } 

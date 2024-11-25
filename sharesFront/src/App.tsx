@@ -48,8 +48,29 @@ import { ScanDiff } from '@/components/dashboard/scan-diff';
 import { Link } from 'react-router-dom';
 import { navigationMenuTriggerStyle } from "@/components/ui/navigation-menu"
 import { format } from 'date-fns';
+import { NetworkMap } from '@/components/dashboard/network-map';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 
-function App() {
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <App />,
+  },
+  {
+    path: "/scan-comparison",
+    element: <ScanDiff />,
+  },
+  {
+    path: "/network-map",
+    element: <NetworkMap />,
+  },
+]);
+
+function Root() {
+  return <RouterProvider router={router} />;
+}
+
+export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedShare, setSelectedShare] = useState<Share | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -144,6 +165,11 @@ function App() {
                       <li>
                         <Link to="/scan-comparison" className={navigationMenuTriggerStyle()}>
                           Scan Comparison
+                        </Link>
+                      </li>
+                      <li>
+                        <Link to="/network-map" className={navigationMenuTriggerStyle()}>
+                          Network Map
                         </Link>
                       </li>
                     </ul>
@@ -317,5 +343,3 @@ function App() {
     </ThemeProvider>
   );
 }
-
-export default App;
