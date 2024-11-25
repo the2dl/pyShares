@@ -46,4 +46,44 @@ export interface Activity {
   severity: 'high' | 'medium' | 'low' | 'info';
 }
 
-export type DetectionType = 'Password' | 'PII' | 'Config' | 'Key' | 'Certificate'; 
+export type DetectionType = 'Password' | 'PII' | 'Config' | 'Key' | 'Certificate';
+
+export interface ScanSession {
+  id: number;
+  domain: string;
+  start_time: Date;
+  end_time: Date | null;
+  total_hosts: number;
+  total_shares: number;
+  total_sensitive_files: number;
+  scan_status: 'running' | 'completed' | 'failed';
+}
+
+export interface ScanDiff {
+  summary: {
+    session1: ScanSession;
+    session2: ScanSession;
+    added_shares: number;
+    removed_shares: number;
+    added_sensitive_files: number;
+    removed_sensitive_files: number;
+  };
+  changes: {
+    shares: {
+      added: Share[];
+      removed: Share[];
+      modified: Array<{
+        share: Share;
+        changes: {
+          field: string;
+          old_value: any;
+          new_value: any;
+        }[];
+      }>;
+    };
+    sensitive_files: {
+      added: Array<SensitiveFile & { share_name: string; hostname: string }>;
+      removed: Array<SensitiveFile & { share_name: string; hostname: string }>;
+    };
+  };
+} 

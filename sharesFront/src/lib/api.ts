@@ -228,4 +228,77 @@ export async function getDetectionTrends(): Promise<TrendData[]> {
   }
   
   return response.json();
+}
+
+interface ScanSession {
+  id: number;
+  domain: string;
+  start_time: string;
+  end_time: string | null;
+  total_hosts: number;
+  total_shares: number;
+  total_sensitive_files: number;
+  scan_status: 'running' | 'completed' | 'failed';
+}
+
+export async function getScanSessions(): Promise<ScanSession[]> {
+  const response = await fetch(`${API_BASE}/scan-sessions`);
+  
+  if (!response.ok) {
+    console.error('Failed to fetch scan sessions:', await response.text());
+    throw new Error('Failed to fetch scan sessions');
+  }
+  
+  return response.json();
+}
+
+interface FileChange {
+  file_name: string;
+  file_path: string;
+  old_detection_type: string | null;
+  new_detection_type: string | null;
+  change_type: 'added' | 'removed' | 'modified';
+}
+
+interface ShareDifference {
+  hostname: string;
+  share_name: string;
+  session1_sensitive_files: number;
+  session2_sensitive_files: number;
+  session1_hidden_files: number;
+  session2_hidden_files: number;
+  session1_total_files: number;
+  session2_total_files: number;
+  change_type: 'added' | 'removed' | 'modified';
+  file_changes?: FileChange[];
+}
+
+interface ScanComparison {
+  sessions: ScanSession[];
+  differences: ShareDifference[];
+  summary: {
+    total_differences: number;
+    added: number;
+    removed: number;
+    modified: number;
+    files_added: number;
+    files_removed: number;
+    files_modified: number;
+  };
+}
+
+export async function compareScanSessions(
+  sessionId1: number, 
+  sessionId2: number
+): Promise<ScanComparison> {
+  const response = await fetch(
+    `${API_BASE}/scan-sessions/compare?session1=${sessionId1}&session2=${sessionId2}`
+  );
+  
+  if (!response.ok) {
+    console.error('Failed to compare sessions:', await response.text());
+    throw new Error('Failed to compare sessions');
+  }
+  
+  return response.json();
 } 

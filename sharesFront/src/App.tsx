@@ -44,6 +44,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ActivityIcon } from "lucide-react";
+import { ScanDiff } from '@/components/dashboard/scan-diff';
 
 function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,6 +169,7 @@ function App() {
 
             <div className="grid gap-4 md:grid-cols-1">
               <TrendCharts />
+              <ScanDiff />
             </div>
 
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">

@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import { Share, SensitiveFile, RootFile } from './types';
@@ -562,6 +562,197 @@ app.get('/api/trends/detections', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch detection trends' });
   }
 });
+
+// Add the scan sessions endpoints
+app.get('/api/scan-sessions', async (req, res) => {
+  try {
+    const query = `
+      SELECT * 
+      FROM scan_sessions 
+      ORDER BY start_time DESC
+    `;
+    
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Failed to fetch scan sessions:', err);
+    res.status(500).json({ error: 'Failed to fetch scan sessions' });
+  }
+});
+
+interface ScanSessionQuery {
+  session1?: string;
+  session2?: string;
+}
+
+interface FileChange {
+  file_name: string;
+  file_path: string;
+  old_detection_type: string | null;
+  new_detection_type: string | null;
+  change_type: 'added' | 'removed' | 'modified';
+}
+
+const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (req, res, next) => {
+  try {
+    const { session1, session2 } = req.query;
+    
+    if (!session1 || !session2) {
+      res.status(400).json({ error: 'Both session IDs are required' });
+      return;
+    }
+
+    // Get shares comparison
+    const sharesQuery = `
+      WITH session1_shares AS (
+        SELECT 
+          s.id as share_id,
+          s.hostname,
+          s.share_name,
+          COUNT(sf.id) as sensitive_files,
+          s.hidden_files,
+          s.total_files
+        FROM shares s
+        LEFT JOIN sensitive_files sf ON s.id = sf.share_id
+        WHERE s.session_id = $1
+        GROUP BY s.id
+      ),
+      session2_shares AS (
+        SELECT 
+          s.id as share_id,
+          s.hostname,
+          s.share_name,
+          COUNT(sf.id) as sensitive_files,
+          s.hidden_files,
+          s.total_files
+        FROM shares s
+        LEFT JOIN sensitive_files sf ON s.id = sf.share_id
+        WHERE s.session_id = $2
+        GROUP BY s.id
+      )
+      SELECT 
+        COALESCE(s1.hostname, s2.hostname) as hostname,
+        COALESCE(s1.share_name, s2.share_name) as share_name,
+        s1.share_id as session1_share_id,
+        s2.share_id as session2_share_id,
+        s1.sensitive_files as session1_sensitive_files,
+        s2.sensitive_files as session2_sensitive_files,
+        s1.hidden_files as session1_hidden_files,
+        s2.hidden_files as session2_hidden_files,
+        s1.total_files as session1_total_files,
+        s2.total_files as session2_total_files,
+        CASE 
+          WHEN s1.hostname IS NULL THEN 'added'
+          WHEN s2.hostname IS NULL THEN 'removed'
+          WHEN s1.sensitive_files != s2.sensitive_files OR 
+               s1.hidden_files != s2.hidden_files OR 
+               s1.total_files != s2.total_files THEN 'modified'
+          ELSE 'unchanged'
+        END as change_type
+      FROM session1_shares s1
+      FULL OUTER JOIN session2_shares s2 
+        ON s1.hostname = s2.hostname 
+        AND s1.share_name = s2.share_name
+      WHERE s1.hostname IS NULL 
+        OR s2.hostname IS NULL 
+        OR s1.sensitive_files != s2.sensitive_files
+        OR s1.hidden_files != s2.hidden_files
+        OR s1.total_files != s2.total_files
+      ORDER BY 
+        CASE 
+          WHEN s1.hostname IS NULL THEN 1
+          WHEN s2.hostname IS NULL THEN 2
+          ELSE 3
+        END,
+        hostname,
+        share_name
+    `;
+
+    const sharesResult = await pool.query(sharesQuery, [session1, session2]);
+
+    // Get file-level changes for modified shares
+    const fileChangesPromises = sharesResult.rows.map(async (share) => {
+      if (share.change_type === 'modified') {
+        // Compare sensitive files
+        const sensitiveFilesQuery = `
+          WITH session1_files AS (
+            SELECT sf.file_name, sf.file_path, sf.detection_type
+            FROM sensitive_files sf
+            JOIN shares s ON sf.share_id = s.id
+            WHERE s.id = $1
+          ),
+          session2_files AS (
+            SELECT sf.file_name, sf.file_path, sf.detection_type
+            FROM sensitive_files sf
+            JOIN shares s ON sf.share_id = s.id
+            WHERE s.id = $2
+          )
+          SELECT 
+            COALESCE(f1.file_name, f2.file_name) as file_name,
+            COALESCE(f1.file_path, f2.file_path) as file_path,
+            f1.detection_type as old_detection_type,
+            f2.detection_type as new_detection_type,
+            CASE 
+              WHEN f1.file_name IS NULL THEN 'added'
+              WHEN f2.file_name IS NULL THEN 'removed'
+              WHEN f1.detection_type != f2.detection_type THEN 'modified'
+            END as change_type
+          FROM session1_files f1
+          FULL OUTER JOIN session2_files f2 
+            ON f1.file_name = f2.file_name 
+            AND f1.file_path = f2.file_path
+          WHERE f1.file_name IS NULL 
+            OR f2.file_name IS NULL 
+            OR f1.detection_type != f2.detection_type
+        `;
+        
+        const fileChanges = await pool.query(
+          sensitiveFilesQuery, 
+          [share.session1_share_id, share.session2_share_id]
+        );
+        
+        return {
+          ...share,
+          file_changes: fileChanges.rows
+        };
+      }
+      return share;
+    });
+
+    const sharesWithFileChanges = await Promise.all(fileChangesPromises);
+
+    // Get session details
+    const sessionsQuery = `
+      SELECT id, start_time, end_time, total_hosts, total_shares, 
+             total_sensitive_files, scan_status
+      FROM scan_sessions
+      WHERE id IN ($1, $2)
+    `;
+    const sessionsResult = await pool.query(sessionsQuery, [session1, session2]);
+
+    res.json({
+      sessions: sessionsResult.rows,
+      differences: sharesWithFileChanges,
+      summary: {
+        total_differences: sharesResult.rows.length,
+        added: sharesResult.rows.filter(r => r.change_type === 'added').length,
+        removed: sharesResult.rows.filter(r => r.change_type === 'removed').length,
+        modified: sharesResult.rows.filter(r => r.change_type === 'modified').length,
+        files_added: sharesWithFileChanges.reduce((acc, share) => 
+          acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'added').length || 0), 0),
+        files_removed: sharesWithFileChanges.reduce((acc, share) => 
+          acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'removed').length || 0), 0),
+        files_modified: sharesWithFileChanges.reduce((acc, share) => 
+          acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'modified').length || 0), 0)
+      }
+    });
+  } catch (err) {
+    console.error('Failed to compare scan sessions:', err);
+    res.status(500).json({ error: 'Failed to compare scan sessions' });
+  }
+};
+
+app.get('/api/scan-sessions/compare', compareSessions);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
