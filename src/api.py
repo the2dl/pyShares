@@ -119,11 +119,32 @@ def get_scan_status(scan_id):
     response_data.pop('timestamp', None)
     return jsonify(response_data)
 
+def extract_scan_config(data: dict) -> dict:
+    """Helper function to extract scan configuration from request data"""
+    return {
+        'dc': data['dc'],
+        'domain': data['domain'],
+        'username': data['username'],
+        'password': data['password'],
+        'ldap_port': data.get('ldap_port', 389),
+        'threads': data.get('threads', 10),
+        'ou': data.get('ou'),
+        'filter': data.get('filter', 'all'),
+        'batch_size': data.get('batch_size', 1000),
+        'max_depth': data.get('max_depth', 5),
+        'scan_timeout': data.get('scan_timeout', 30),
+        'host_timeout': data.get('host_timeout', 300),
+        'max_computers': data.get('max_computers', 800000),
+    }
+
 @app.route('/api/scan', methods=['POST'])
 def start_scan():
     try:
         data = request.json
         scan_id = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Extract scan configuration using helper function
+        scan_config = extract_scan_config(data)
         
         # Initialize scan status
         scans = load_scans()
@@ -140,20 +161,18 @@ def start_scan():
         
         def run_scan_with_status():
             try:
-                cleanup_old_scans()
-                
                 config = Config(
-                    LDAP_SERVER=data['dc'],
-                    LDAP_DOMAIN=data['domain'],
-                    LDAP_PORT=data.get('ldap_port', 389),
-                    DEFAULT_THREADS=data.get('threads', 10),
-                    BATCH_SIZE=data.get('batch_size', 1000),
-                    MAX_SCAN_DEPTH=data.get('max_depth', 5),
-                    SCAN_TIMEOUT=data.get('scan_timeout', 30),
-                    HOST_SCAN_TIMEOUT=data.get('host_timeout', 300),
-                    MAX_COMPUTERS=data.get('max_computers', 800000)
+                    LDAP_SERVER=scan_config['dc'],
+                    LDAP_DOMAIN=scan_config['domain'],
+                    LDAP_PORT=scan_config['ldap_port'],
+                    DEFAULT_THREADS=scan_config['threads'],
+                    BATCH_SIZE=scan_config['batch_size'],
+                    MAX_SCAN_DEPTH=scan_config['max_depth'],
+                    SCAN_TIMEOUT=scan_config['scan_timeout'],
+                    HOST_SCAN_TIMEOUT=scan_config['host_timeout'],
+                    MAX_COMPUTERS=scan_config['max_computers']
                 )
-                config.set_credentials(data['username'], data['password'])
+                config.set_credentials(scan_config['username'], scan_config['password'])
 
                 ldap_helper = LDAPHelper(config)
                 db_helper = DatabaseHelper(config)
@@ -162,14 +181,14 @@ def start_scan():
 
                 ldap_helper.connect_with_stored_credentials()
                 computers = ldap_helper.get_computers(
-                    ldap_filter=data.get('filter', 'all'),
-                    ou=data.get('ou')
+                    ldap_filter=scan_config['filter'],
+                    ou=scan_config['ou']
                 )
 
                 if not computers:
                     raise ValueError("No computers found")
 
-                session_id = db_helper.start_scan_session(data['domain'])
+                session_id = db_helper.start_scan_session(scan_config['domain'])
                 scanner = ShareScanner(config, db_helper, session_id)
 
                 def progress_callback(current_host, processed, total):
@@ -272,34 +291,20 @@ def create_schedule():
         
         if trigger_type != 'cron':
             raise ValueError("Only cron trigger type is supported")
-            
-        # Convert schedule config to APScheduler cron format
-        day_of_week = schedule_config.get('day_of_week', '*')
-        hour = schedule_config.get('hour', 0)
-        minute = schedule_config.get('minute', 0)
+        
+        # Extract scan configuration using helper function
+        scan_config = extract_scan_config(data)
         
         # Create the job
         job = scheduler.add_job(
             run_scan_with_status,
             'cron',
-            day_of_week=day_of_week,
-            hour=hour,
-            minute=minute,
+            day_of_week=schedule_config.get('day_of_week', '*'),
+            hour=schedule_config.get('hour', 0),
+            minute=schedule_config.get('minute', 0),
             id=f"scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             name=name,
-            kwargs={'scan_config': {
-                'dc': data.get('dc'),
-                'domain': data.get('domain'),
-                'username': data.get('username'),
-                'password': data.get('password'),
-                'ldap_port': data.get('ldap_port', 389),
-                'threads': data.get('threads', 10),
-                'batch_size': data.get('batch_size', 1000),
-                'max_depth': data.get('max_depth', 5),
-                'scan_timeout': data.get('scan_timeout', 30),
-                'host_timeout': data.get('host_timeout', 300),
-                'max_computers': data.get('max_computers', 800000),
-            }}
+            kwargs={'scan_config': scan_config}
         )
         
         logger.info(f"Successfully created scheduled job: {job.id}")
@@ -342,13 +347,13 @@ def run_scan_with_status(scan_config: dict):
         config = Config(
             LDAP_SERVER=scan_config['dc'],
             LDAP_DOMAIN=scan_config['domain'],
-            LDAP_PORT=scan_config.get('ldap_port', 389),
-            DEFAULT_THREADS=scan_config.get('threads', 10),
-            BATCH_SIZE=scan_config.get('batch_size', 1000),
-            MAX_SCAN_DEPTH=scan_config.get('max_depth', 5),
-            SCAN_TIMEOUT=scan_config.get('scan_timeout', 30),
-            HOST_SCAN_TIMEOUT=scan_config.get('host_timeout', 300),
-            MAX_COMPUTERS=scan_config.get('max_computers', 800000)
+            LDAP_PORT=scan_config['ldap_port'],
+            DEFAULT_THREADS=scan_config['threads'],
+            BATCH_SIZE=scan_config['batch_size'],
+            MAX_SCAN_DEPTH=scan_config['max_depth'],
+            SCAN_TIMEOUT=scan_config['scan_timeout'],
+            HOST_SCAN_TIMEOUT=scan_config['host_timeout'],
+            MAX_COMPUTERS=scan_config['max_computers']
         )
         config.set_credentials(scan_config['username'], scan_config['password'])
 
@@ -361,8 +366,8 @@ def run_scan_with_status(scan_config: dict):
         # Connect to LDAP
         ldap_helper.connect_with_stored_credentials()
         computers = ldap_helper.get_computers(
-            ldap_filter=scan_config.get('filter', 'all'),
-            ou=scan_config.get('ou')
+            ldap_filter=scan_config['filter'],
+            ou=scan_config['ou']
         )
 
         if not computers:

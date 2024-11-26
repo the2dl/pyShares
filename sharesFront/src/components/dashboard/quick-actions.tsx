@@ -15,6 +15,8 @@ import {
   AlertTriangle,
   FileWarning,
   Shield,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -52,6 +54,7 @@ import { exportData } from '@/lib/api';
 import { Checkbox } from "@/components/ui/checkbox";
 import { getScanSessions } from '@/lib/api';
 import { format } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -100,6 +103,15 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     domain: '',
     username: '',
     password: '',
+    ldap_port: 389,
+    threads: 10,
+    ou: '',
+    filter: 'all',
+    batch_size: 1000,
+    max_depth: 5,
+    scan_timeout: 30,
+    host_timeout: 300,
+    max_computers: 800000,
   });
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduleConfig, setScheduleConfig] = useState({
@@ -129,6 +141,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
   });
   const [sessions, setSessions] = useState<ScanSession[]>([]);
   const [editingPattern, setEditingPattern] = useState<SensitivePattern | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const actions = [
     {
@@ -230,6 +243,15 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
         domain: credentials.domain,
         username: credentials.username,
         password: credentials.password,
+        ldap_port: credentials.ldap_port,
+        threads: credentials.threads,
+        ou: credentials.ou || undefined,
+        filter: credentials.filter,
+        batch_size: credentials.batch_size,
+        max_depth: credentials.max_depth,
+        scan_timeout: credentials.scan_timeout,
+        host_timeout: credentials.host_timeout,
+        max_computers: credentials.max_computers,
       });
 
       setActiveScanId(result.scan_id);
@@ -597,6 +619,117 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                 onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
               />
             </div>
+
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full flex justify-between items-center"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                Advanced Options
+                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+
+              {showAdvanced && (
+                <div className="grid gap-4 p-4 border rounded-md">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="ldap_port">LDAP Port</Label>
+                      <Input
+                        id="ldap_port"
+                        type="number"
+                        value={credentials.ldap_port}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, ldap_port: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="threads">Threads</Label>
+                      <Input
+                        id="threads"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={credentials.threads}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, threads: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="ou">Organizational Unit</Label>
+                      <Input
+                        id="ou"
+                        value={credentials.ou}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, ou: e.target.value }))}
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="filter">LDAP Filter</Label>
+                      <Input
+                        id="filter"
+                        value={credentials.filter}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, filter: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="batch_size">Batch Size</Label>
+                      <Input
+                        id="batch_size"
+                        type="number"
+                        value={credentials.batch_size}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, batch_size: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="max_depth">Max Depth</Label>
+                      <Input
+                        id="max_depth"
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={credentials.max_depth}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, max_depth: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="scan_timeout">Scan Timeout (s)</Label>
+                      <Input
+                        id="scan_timeout"
+                        type="number"
+                        value={credentials.scan_timeout}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, scan_timeout: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="host_timeout">Host Timeout (s)</Label>
+                      <Input
+                        id="host_timeout"
+                        type="number"
+                        value={credentials.host_timeout}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, host_timeout: parseInt(e.target.value) }))}
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="max_computers">Max Computers</Label>
+                      <Input
+                        id="max_computers"
+                        type="number"
+                        value={credentials.max_computers}
+                        onChange={(e) => setCredentials(prev => ({ ...prev, max_computers: parseInt(e.target.value) }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center space-x-2 mb-4">
@@ -750,176 +883,130 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>Configure scan and detection settings</DialogDescription>
+          </DialogHeader>
+
+          <Tabs defaultValue="patterns" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="patterns">Sensitive Patterns</TabsTrigger>
+              <TabsTrigger value="scan">Scan Settings</TabsTrigger>
+              <TabsTrigger value="schedules">Schedules</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="patterns" className="space-y-4">
+              <div className="flex justify-end">
+                <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
+              </div>
+              {/* Patterns table */}
+            </TabsContent>
+
+            <TabsContent value="scan">
+              {/* Scan settings */}
+            </TabsContent>
+
+            <TabsContent value="schedules">
+              {/* Schedule settings */}
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddingPattern} onOpenChange={setIsAddingPattern}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Pattern</DialogTitle>
             <DialogDescription>
-              Manage sensitive pattern detection settings
+              Add a new sensitive pattern for detection
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Pattern (RegEx)</Label>
+              <Input
+                value={newPattern.pattern}
+                onChange={(e) => setNewPattern({ ...newPattern, pattern: e.target.value })}
+                placeholder="e.g., pass(word|wd)?|secret"
+              />
             </div>
-
-            <div className="border rounded-md">
-              <Table>
-                <TableHeader className="sticky top-0 bg-background">
-                  <TableRow>
-                    <TableHead>Pattern</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="overflow-y-auto max-h-[32rem]">
-                  {patterns.map((pattern) => (
-                    <TableRow key={pattern.id}>
-                      <TableCell>{pattern.pattern}</TableCell>
-                      <TableCell>{pattern.type}</TableCell>
-                      <TableCell>{pattern.description}</TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={pattern.enabled}
-                          onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => setEditingPattern(pattern)}
-                          >
-                            Edit
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="destructive" size="sm">Delete</Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this pattern? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <div className="grid gap-2">
+              <Label>Type</Label>
+              <Input
+                value={newPattern.type}
+                onChange={(e) => setNewPattern({ ...newPattern, type: e.target.value })}
+                placeholder="e.g., credential"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Input
+                value={newPattern.description}
+                onChange={(e) => setNewPattern({ ...newPattern, description: e.target.value })}
+                placeholder="e.g., Matches password-related files"
+              />
             </div>
           </div>
 
-          <Dialog open={isAddingPattern} onOpenChange={setIsAddingPattern}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Pattern</DialogTitle>
-                <DialogDescription>
-                  Add a new sensitive pattern for detection
-                </DialogDescription>
-              </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingPattern(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddPattern}>Add Pattern</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label>Pattern (RegEx)</Label>
-                  <Input
-                    value={newPattern.pattern}
-                    onChange={(e) => setNewPattern({ ...newPattern, pattern: e.target.value })}
-                    placeholder="e.g., pass(word|wd)?|secret"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Type</Label>
-                  <Input
-                    value={newPattern.type}
-                    onChange={(e) => setNewPattern({ ...newPattern, type: e.target.value })}
-                    placeholder="e.g., credential"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={newPattern.description}
-                    onChange={(e) => setNewPattern({ ...newPattern, description: e.target.value })}
-                    placeholder="e.g., Matches password-related files"
-                  />
-                </div>
-              </div>
+      <Dialog open={!!editingPattern} onOpenChange={(open) => !open && setEditingPattern(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Pattern</DialogTitle>
+            <DialogDescription>
+              Modify the sensitive pattern detection settings
+            </DialogDescription>
+          </DialogHeader>
 
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddingPattern(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleAddPattern}>Add Pattern</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={!!editingPattern} onOpenChange={(open) => !open && setEditingPattern(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Edit Pattern</DialogTitle>
-                <DialogDescription>
-                  Modify the sensitive pattern detection settings
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label>Pattern (RegEx)</Label>
-                  <Input
-                    value={editingPattern?.pattern || ''}
-                    onChange={(e) => setEditingPattern(prev => 
-                      prev ? { ...prev, pattern: e.target.value } : null
-                    )}
-                    placeholder="e.g., pass(word|wd)?|secret"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Type</Label>
-                  <Input
-                    value={editingPattern?.type || ''}
-                    onChange={(e) => setEditingPattern(prev => 
-                      prev ? { ...prev, type: e.target.value } : null
-                    )}
-                    placeholder="e.g., credential"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={editingPattern?.description || ''}
-                    onChange={(e) => setEditingPattern(prev => 
-                      prev ? { ...prev, description: e.target.value } : null
-                    )}
-                    placeholder="e.g., Matches password-related files"
-                  />
-                </div>
-              </div>
-
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditingPattern(null)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleEditPattern}>Save Changes</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Pattern (RegEx)</Label>
+              <Input
+                value={editingPattern?.pattern || ''}
+                onChange={(e) => setEditingPattern(prev => 
+                  prev ? { ...prev, pattern: e.target.value } : null
+                )}
+                placeholder="e.g., pass(word|wd)?|secret"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Type</Label>
+              <Input
+                value={editingPattern?.type || ''}
+                onChange={(e) => setEditingPattern(prev => 
+                  prev ? { ...prev, type: e.target.value } : null
+                )}
+                placeholder="e.g., credential"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Input
+                value={editingPattern?.description || ''}
+                onChange={(e) => setEditingPattern(prev => 
+                  prev ? { ...prev, description: e.target.value } : null
+                )}
+                placeholder="e.g., Matches password-related files"
+              />
+            </div>
+          </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
-              Close
+            <Button variant="outline" onClick={() => setEditingPattern(null)}>
+              Cancel
             </Button>
+            <Button onClick={handleEditPattern}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
