@@ -271,12 +271,31 @@ export function NetworkMap() {
       
       // Group files by their folder path
       const folderStructure: { [key: string]: any[] } = {};
+      
+      // First, create a map of filenames to their sensitive versions
+      const sensitiveFiles = new Map();
+      structure.files.forEach((file: any) => {
+        if (file.is_sensitive) {
+          sensitiveFiles.set(file.file_name, file);
+        }
+      });
+
+      // Then group files, preferring sensitive versions
       structure.files.forEach((file: any) => {
         const folderPath = file.file_path.split('/').slice(0, -1).join('/') || '/';
         if (!folderStructure[folderPath]) {
           folderStructure[folderPath] = [];
         }
-        folderStructure[folderPath].push(file);
+
+        // Only add the file if:
+        // 1. It's sensitive, OR
+        // 2. There isn't a sensitive version of this file
+        if (file.is_sensitive || !sensitiveFiles.has(file.file_name)) {
+          // Check if we haven't already added this file
+          if (!folderStructure[folderPath].some((f: any) => f.file_name === file.file_name)) {
+            folderStructure[folderPath].push(file);
+          }
+        }
       });
 
       // Calculate initial positions
