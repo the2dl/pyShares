@@ -1,4 +1,4 @@
-export type DetectionType = 'credential' | 'pii' | 'financial' | 'hr' | 'security' | 'sensitive';
+export type DetectionType = string;
 
 export interface Share {
   id: number;
@@ -39,4 +39,14 @@ export interface ShareStats {
   riskScore: number;
   recentScans: number;
   totalFindings?: number;
+}
+
+export interface SensitivePattern {
+  id: number;
+  pattern: string;
+  type: string;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }

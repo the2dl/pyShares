@@ -46,7 +46,15 @@ export interface Activity {
   severity: 'high' | 'medium' | 'low' | 'info';
 }
 
-export type DetectionType = 'credential' | 'pii' | 'financial' | 'hr' | 'security' | 'sensitive';
+export type BaseDetectionType = 
+  | 'credential' 
+  | 'pii' 
+  | 'financial' 
+  | 'hr' 
+  | 'security' 
+  | 'sensitive';
+
+export type DetectionType = BaseDetectionType | string;
 
 export interface ScanSession {
   id: number;
@@ -86,4 +94,27 @@ export interface ScanDiff {
       removed: Array<SensitiveFile & { share_name: string; hostname: string }>;
     };
   };
+}
+
+export interface SensitivePattern {
+  id: number;
+  pattern: string;
+  type: string;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AddPatternRequest {
+  pattern: string;
+  type: string;
+  description: string;
+}
+
+export interface UpdatePatternRequest {
+  pattern: string;
+  type: string;
+  description: string;
+  enabled: boolean;
 } 

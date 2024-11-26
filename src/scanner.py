@@ -122,7 +122,7 @@ class ShareScanner:
         self.config = config
         self.db_helper = db_helper
         self.session_id = session_id
-        self.pattern_matcher = PatternMatcher()
+        self.pattern_matcher = PatternMatcher(db_helper)
         self.share_stats = {
             ShareAccess.FULL_ACCESS: set(),
             ShareAccess.READ_ONLY: set(),

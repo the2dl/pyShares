@@ -63,6 +63,14 @@ interface ScanSession {
   scan_status: string;
 }
 
+interface FileChange {
+  file_name: string;
+  file_path: string;
+  change_type: 'added' | 'removed' | 'modified';
+  detection_types?: string[];
+  previous_detection_types?: string[];
+}
+
 interface ShareDifference {
   hostname: string;
   share_name: string;
@@ -146,6 +154,29 @@ export function ScanDiff() {
       </Badge>
     );
   };
+
+  const renderFileChanges = (file: FileChange, isBaseline: boolean) => (
+    <div className="mt-2 pl-4 text-xs border-l">
+      {file.change_type === 'added' && !isBaseline && <span className="text-green-500">+ </span>}
+      {file.change_type === 'removed' && isBaseline && <span className="text-red-500">- </span>}
+      {file.change_type === 'modified' && <span className="text-yellow-500">~ </span>}
+      <span>{file.file_path || file.file_name}</span>
+      {file.detection_types && file.detection_types.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {file.detection_types.map((type: string) => (
+            <Badge key={type} variant="outline" className="text-xs">
+              {type.charAt(0).toUpperCase() + type.slice(1)}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {file.change_type === 'modified' && file.previous_detection_types && (
+        <div className="mt-1 text-muted-foreground">
+          Previous types: {file.previous_detection_types.join(', ')}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -337,13 +368,9 @@ export function ScanDiff() {
                                       <div>Total: {diff.session1_total_files || '-'}</div>
                                     </div>
                                   )}
-                                  {diff.file_changes?.map((file: any, fileIndex: number) => (
-                                    <div key={fileIndex} className="mt-2 pl-4 text-xs border-l">
-                                      {file.change_type === 'removed' && <span className="text-red-500">- </span>}
-                                      {file.change_type === 'modified' && <span className="text-yellow-500">~ </span>}
-                                      {file.file_path || file.file_name}
-                                    </div>
-                                  ))}
+                                  {diff.file_changes?.map((file: FileChange, fileIndex: number) => 
+                                    renderFileChanges(file, true)
+                                  )}
                                 </div>
                               </CardContent>
                             </Card>
@@ -376,13 +403,9 @@ export function ScanDiff() {
                                       <div>Total: {diff.session2_total_files || '-'}</div>
                                     </div>
                                   )}
-                                  {diff.file_changes?.map((file: any, fileIndex: number) => (
-                                    <div key={fileIndex} className="mt-2 pl-4 text-xs border-l">
-                                      {file.change_type === 'added' && <span className="text-green-500">+ </span>}
-                                      {file.change_type === 'modified' && <span className="text-yellow-500">~ </span>}
-                                      {file.file_path || file.file_name}
-                                    </div>
-                                  ))}
+                                  {diff.file_changes?.map((file: FileChange, fileIndex: number) => 
+                                    renderFileChanges(file, false)
+                                  )}
                                 </div>
                               </CardContent>
                             </Card>

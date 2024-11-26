@@ -47,6 +47,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { getSensitivePatterns, addSensitivePattern, updateSensitivePattern, deleteSensitivePattern } from '@/lib/api';
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -63,6 +64,16 @@ export const scanStatusAtom = atom<{
   };
   error?: string;
 } | null>(null);
+
+interface SensitivePattern {
+  id: number;
+  pattern: string;
+  type: string;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -87,11 +98,19 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
   });
   const [schedules, setSchedules] = useState<ScheduledJob[]>([]);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [patterns, setPatterns] = useState<SensitivePattern[]>([]);
+  const [newPattern, setNewPattern] = useState({
+    pattern: '',
+    type: '',
+    description: ''
+  });
+  const [isAddingPattern, setIsAddingPattern] = useState(false);
 
   const actions = [
     {
-      label: 'Start Scan',
-      description: 'Start a new network scan',
+      label: 'Ad-hoc Scan',
+      description: 'Start a new network scan immediately',
       icon: Play,
       color: 'text-green-500',
       onClick: () => setIsDialogOpen(true),
@@ -103,26 +122,10 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       icon: Calendar,
       color: 'text-blue-500',
       onClick: () => {
-        setScheduleMode(true);  // Enable schedule mode by default
-        setIsDialogOpen(true);  // Open the dialog
+        setScheduleMode(true);
+        setIsDialogOpen(true);
       },
-      disabled: false,  // Changed from true to false
-    },
-    {
-      label: 'Export Data',
-      description: 'Export scan results',
-      icon: Download,
-      color: 'text-yellow-500',
-      onClick: () => {},
-      disabled: true, // Disabled
-    },
-    {
-      label: 'Settings',
-      description: 'Configure scan settings',
-      icon: Settings,
-      color: 'text-purple-500',
-      onClick: () => {},
-      disabled: true, // Disabled
+      disabled: false,
     },
     {
       label: 'View Schedules',
@@ -130,6 +133,22 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       icon: Calendar,
       color: 'text-purple-500',
       onClick: () => setIsViewDialogOpen(true),
+      disabled: false,
+    },
+    {
+      label: 'Export Data',
+      description: 'Export scan results',
+      icon: Download,
+      color: 'text-yellow-500',
+      onClick: () => {},
+      disabled: true,
+    },
+    {
+      label: 'Settings',
+      description: 'Configure scan settings',
+      icon: Settings,
+      color: 'text-purple-500',
+      onClick: () => setIsSettingsOpen(true),
       disabled: false,
     },
   ];
@@ -361,6 +380,85 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     }
   };
 
+  const loadPatterns = async () => {
+    try {
+      const data = await getSensitivePatterns();
+      setPatterns(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load sensitive patterns",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddPattern = async () => {
+    try {
+      const pattern = await addSensitivePattern(newPattern);
+      setPatterns([...patterns, pattern]);
+      setNewPattern({ pattern: '', type: '', description: '' });
+      setIsAddingPattern(false);
+      toast({
+        title: "Success",
+        description: "Pattern added successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add pattern",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTogglePattern = async (id: number, enabled: boolean) => {
+    try {
+      const pattern = patterns.find(p => p.id === id);
+      if (!pattern) return;
+      
+      const updated = await updateSensitivePattern(id, {
+        ...pattern,
+        enabled: !enabled
+      });
+      
+      setPatterns(patterns.map(p => p.id === id ? updated : p));
+      toast({
+        title: "Success",
+        description: "Pattern updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update pattern",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeletePattern = async (id: number) => {
+    try {
+      await deleteSensitivePattern(id);
+      setPatterns(patterns.filter(p => p.id !== id));
+      toast({
+        title: "Success",
+        description: "Pattern deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete pattern",
+        variant: "destructive",
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (isSettingsOpen) {
+      loadPatterns();
+    }
+  }, [isSettingsOpen]);
+
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -581,6 +679,122 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsViewDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>
+              Manage sensitive pattern detection settings
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
+            </div>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Pattern</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {patterns.map((pattern) => (
+                  <TableRow key={pattern.id}>
+                    <TableCell>{pattern.pattern}</TableCell>
+                    <TableCell>{pattern.type}</TableCell>
+                    <TableCell>{pattern.description}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={pattern.enabled}
+                        onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm">Delete</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete this pattern? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <Dialog open={isAddingPattern} onOpenChange={setIsAddingPattern}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Pattern</DialogTitle>
+                <DialogDescription>
+                  Add a new sensitive pattern for detection
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Pattern (RegEx)</Label>
+                  <Input
+                    value={newPattern.pattern}
+                    onChange={(e) => setNewPattern({ ...newPattern, pattern: e.target.value })}
+                    placeholder="e.g., pass(word|wd)?|secret"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Type</Label>
+                  <Input
+                    value={newPattern.type}
+                    onChange={(e) => setNewPattern({ ...newPattern, type: e.target.value })}
+                    placeholder="e.g., credential"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Description</Label>
+                  <Input
+                    value={newPattern.description}
+                    onChange={(e) => setNewPattern({ ...newPattern, description: e.target.value })}
+                    placeholder="e.g., Matches password-related files"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddingPattern(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddPattern}>Add Pattern</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
               Close
             </Button>
           </DialogFooter>

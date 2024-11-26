@@ -109,6 +109,46 @@ class DatabaseHelper:
                         )
                     """)
 
+                    # Create sensitive_patterns table
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS sensitive_patterns (
+                            id SERIAL PRIMARY KEY,
+                            pattern VARCHAR(255) NOT NULL,
+                            type VARCHAR(50) NOT NULL,
+                            description TEXT,
+                            enabled BOOLEAN DEFAULT true,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+
+                    # Add index for pattern lookups
+                    cur.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_sensitive_patterns_type 
+                        ON sensitive_patterns(type)
+                    """)
+
+                    # Add default patterns if table is empty
+                    cur.execute("SELECT COUNT(*) FROM sensitive_patterns")
+                    if cur.fetchone()[0] == 0:
+                        default_patterns = [
+                            ('pass(word|wd)?|secret|credential|key|auth|token|apikey|api.?key', 'credential', 'Credential-related file'),
+                            ('ssn|social.*security|tax|ein|itin|passport', 'pii', 'Government ID related'),
+                            ('bank|account|routing|swift|iban|credit.*card|debit.*card', 'financial', 'Financial information'),
+                            ('salary|payroll|compensation|benefits', 'hr', 'HR/Personnel information'),
+                            ('medical|health|diagnosis|patient|rx|prescription', 'health', 'Healthcare information'),
+                            ('driver.*license|birth.*certificate|national.*id', 'identity', 'Identity documents'),
+                            ('confidential|private|sensitive|restricted|internal', 'classification', 'Explicitly marked sensitive'),
+                            ('contract|agreement|nda|legal', 'legal', 'Legal documents'),
+                            ('backup|dump|export|archive', 'backup', 'Backup/Export files'),
+                            ('config|settings|env|properties', 'configuration', 'Configuration files'),
+                            # ... add other default patterns ...
+                        ]
+                        execute_values(cur, """
+                            INSERT INTO sensitive_patterns (pattern, type, description)
+                            VALUES %s
+                        """, default_patterns)
+
                     # Create indexes
                     indexes = [
                         "CREATE INDEX IF NOT EXISTS idx_shares_hostname ON shares(hostname)",
@@ -327,3 +367,60 @@ class DatabaseHelper:
                     WHERE id = %s
                 """, (total_hosts, total_shares, total_sensitive, session_id))
                 conn.commit()
+
+    def get_sensitive_patterns(self) -> List[Dict]:
+        """Get all sensitive patterns"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, pattern, type, description, enabled, 
+                           created_at, updated_at
+                    FROM sensitive_patterns
+                    ORDER BY type, pattern
+                """)
+                columns = [desc[0] for desc in cur.description]
+                return [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    def add_sensitive_pattern(self, pattern: str, type: str, description: str) -> Dict:
+        """Add a new sensitive pattern"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO sensitive_patterns (pattern, type, description)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, pattern, type, description, enabled, 
+                              created_at, updated_at
+                """, (pattern, type, description))
+                columns = [desc[0] for desc in cur.description]
+                result = cur.fetchone()
+                conn.commit()
+                return dict(zip(columns, result))
+
+    def update_sensitive_pattern(self, id: int, pattern: str, type: str, 
+                               description: str, enabled: bool) -> Dict:
+        """Update an existing sensitive pattern"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE sensitive_patterns 
+                    SET pattern = %s, type = %s, description = %s, 
+                        enabled = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    RETURNING id, pattern, type, description, enabled, 
+                              created_at, updated_at
+                """, (pattern, type, description, enabled, id))
+                columns = [desc[0] for desc in cur.description]
+                result = cur.fetchone()
+                conn.commit()
+                return dict(zip(columns, result))
+
+    def delete_sensitive_pattern(self, id: int) -> bool:
+        """Delete a sensitive pattern"""
+        with self.get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM sensitive_patterns WHERE id = %s
+                """, (id,))
+                deleted = cur.rowcount > 0
+                conn.commit()
+                return deleted

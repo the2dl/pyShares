@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
-import { getShares, getScanSessions } from '@/lib/api';
+import { getShares, getScanSessions, getSensitivePatterns } from '@/lib/api';
 import {
   Select,
   SelectContent,
@@ -108,6 +108,22 @@ export function App() {
   const [sessions, setSessions] = useState<ScanSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<string>('all');
   const { toast } = useToast();
+  const [detectionTypes, setDetectionTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadDetectionTypes = async () => {
+      try {
+        const patterns = await getSensitivePatterns();
+        console.log('Loaded patterns:', patterns);
+        const types = [...new Set(patterns.map(p => p.type))];
+        console.log('Unique types:', types);
+        setDetectionTypes(types);
+      } catch (error) {
+        console.error('Failed to load detection types:', error);
+      }
+    };
+    loadDetectionTypes();
+  }, []);
 
   useEffect(() => {
     const fetchSessions = async () => {
@@ -402,12 +418,11 @@ export function App() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="credential">Credentials</SelectItem>
-                      <SelectItem value="pii">PII</SelectItem>
-                      <SelectItem value="financial">Financial</SelectItem>
-                      <SelectItem value="hr">HR</SelectItem>
-                      <SelectItem value="sensitive">Sensitive</SelectItem>
-                      <SelectItem value="security">Security</SelectItem>
+                      {detectionTypes.map(type => (
+                        <SelectItem key={type} value={type}>
+                          {type.charAt(0).toUpperCase() + type.slice(1)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

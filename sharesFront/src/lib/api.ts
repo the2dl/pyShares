@@ -1,3 +1,5 @@
+import type { DetectionType, SensitivePattern } from '@/types';
+
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export async function getShares(
@@ -370,4 +372,46 @@ export async function postActivity(activity: Activity): Promise<void> {
   if (!response.ok) {
     throw new Error('Failed to post activity');
   }
+}
+
+export async function getSensitivePatterns(): Promise<SensitivePattern[]> {
+  console.log('Fetching patterns from:', `${API_BASE}/settings/sensitive-patterns`);
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`);
+  if (!response.ok) {
+    console.error('Failed to fetch patterns:', await response.text());
+    throw new Error('Failed to fetch sensitive patterns');
+  }
+  const data = await response.json();
+  console.log('Received patterns:', data);
+  return data;
+}
+
+export async function addSensitivePattern(pattern: Pick<SensitivePattern, 'pattern' | 'type' | 'description'>): Promise<SensitivePattern> {
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pattern),
+  });
+  if (!response.ok) throw new Error('Failed to add sensitive pattern');
+  return response.json();
+}
+
+export async function updateSensitivePattern(
+  id: number,
+  pattern: Pick<SensitivePattern, 'pattern' | 'type' | 'description' | 'enabled'>
+): Promise<SensitivePattern> {
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(pattern),
+  });
+  if (!response.ok) throw new Error('Failed to update sensitive pattern');
+  return response.json();
+}
+
+export async function deleteSensitivePattern(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error('Failed to delete sensitive pattern');
 } 

@@ -1,30 +1,44 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LineChart } from '@/components/ui/chart';
-import { getDetectionTrends } from '@/lib/api';
+import { getDetectionTrends, getSensitivePatterns } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
 export function TrendCharts() {
   const [data, setData] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchTrends = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
+        
+        // Fetch detection types from patterns
+        const patterns = await getSensitivePatterns();
+        const uniqueTypes = Array.from(new Set(patterns.map(p => p.type)));
+        
+        // Fetch trend data
         const trends = await getDetectionTrends();
+        
+        // Filter out detection types with no data
+        const activeTypes = uniqueTypes.filter(type => 
+          trends.some(point => point[type] && point[type] > 0)
+        );
+        
+        setCategories(activeTypes);
         setData(trends);
       } catch (err) {
-        console.error('Failed to fetch trends:', err);
+        console.error('Failed to fetch data:', err);
         setError('Failed to load detection trends');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTrends();
+    fetchData();
   }, []);
 
   if (error) {
@@ -66,16 +80,9 @@ export function TrendCharts() {
         <div className="h-[300px]">
           <LineChart
             data={data}
-            categories={['credential', 'pii', 'financial', 'hr', 'security', 'sensitive']}
+            categories={categories}
             index="date"
-            colors={[
-              'hsl(var(--primary))',         // credential - blue
-              'hsl(var(--destructive))',      // pii - red
-              'hsl(var(--success))',          // financial - green
-              'hsl(var(--warning))',          // hr - yellow/orange
-              'hsl(var(--secondary))',        // security - purple
-              'hsl(var(--muted-foreground))' // sensitive - gray
-            ]}
+            colors={['hsl(var(--primary))']}
             valueFormatter={(value: number) => value.toString()}
             showLegend
             showXAxis

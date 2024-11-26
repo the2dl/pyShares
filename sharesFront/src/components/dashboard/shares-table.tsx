@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, forwardRef } from 'react';
-import { Share, DetectionType, SensitiveFile } from '@/types';
+import { Share, DetectionType } from '@/types';
 import {
   Table,
   TableBody,
@@ -329,16 +329,20 @@ export function SharesTable({
                                 variant="secondary"
                                 className={
                                   share.sensitive_file_count > 0
-                                    ? 'bg-yellow-500'
+                                    ? detectionFilter !== 'all'
+                                      ? 'bg-yellow-500'
+                                      : 'bg-orange-500'
                                     : 'bg-green-500'
                                 }
                               >
-                                {share.sensitive_file_count}
+                                {share.sensitive_file_count || 0}
                               </Badge>
                             </TooltipTrigger>
                             <TooltipContent>
                               {share.sensitive_file_count === 0
                                 ? 'No sensitive files detected'
+                                : detectionFilter !== 'all'
+                                ? `${share.sensitive_file_count} ${detectionFilter} files found`
                                 : `${share.sensitive_file_count} sensitive files found`}
                             </TooltipContent>
                           </Tooltip>

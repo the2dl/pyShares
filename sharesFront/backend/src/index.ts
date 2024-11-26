@@ -1,7 +1,14 @@
 import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
-import { Share, SensitiveFile, RootFile } from './types';
+import { 
+  Share, 
+  SensitiveFile, 
+  RootFile, 
+  SensitivePattern, 
+  AddPatternRequest, 
+  UpdatePatternRequest 
+} from './types';
 
 import dotenv from 'dotenv';
 dotenv.config();
@@ -33,73 +40,76 @@ app.use(express.json());
 // Get all shares with filtering
 app.get('/api/shares', async (req, res) => {
   try {
-    const { search, detection_type } = req.query;
-    
-    // First, let's check if there are any matching root files
-    if (search) {
-      const debugQuery = `
-        SELECT COUNT(*) as count 
-        FROM root_files 
-        WHERE file_name ILIKE $1
-      `;
-      const debugResult = await pool.query(debugQuery, [`%${search}%`]);
-      console.log(`Debug: Found ${debugResult.rows[0].count} matching root files for search "${search}"`);
-    }
-    
-    // Build the base query
-    let query = `
-      SELECT 
-        s.*,
-        COUNT(DISTINCT CASE 
-          WHEN ${detection_type ? `sf.detection_type = $3 AND` : ''} 
-          sf.id IS NOT NULL THEN sf.id 
-          END
-        ) as sensitive_file_count
-      FROM shares s
-      LEFT JOIN sensitive_files sf ON s.id = sf.share_id
-      WHERE 1=1
-    `;
+    const { search, detection_type, filter_type, filter_value, session_id, page, limit } = req.query;
     
     const params: any[] = [];
     let paramIndex = 1;
 
+    // Build the base query
+    let query = `
+      WITH filtered_files AS (
+        SELECT sf.share_id, sf.id as file_id
+        FROM sensitive_files sf
+        WHERE 1=1
+        ${detection_type && detection_type !== 'all' 
+          ? `AND EXISTS (
+              SELECT 1 FROM sensitive_patterns sp 
+              WHERE sp.type = $${paramIndex} 
+              AND sp.enabled = true
+              AND sf.detection_type = sp.type
+            )` 
+          : ''}
+      )
+      SELECT 
+        s.*,
+        COUNT(DISTINCT ff.file_id) as sensitive_file_count
+      FROM shares s
+      LEFT JOIN filtered_files ff ON s.id = ff.share_id
+      LEFT JOIN sensitive_files sf ON s.id = sf.share_id
+      WHERE 1=1
+      ${detection_type && detection_type !== 'all' 
+        ? 'AND ff.share_id IS NOT NULL' 
+        : ''}
+    `;
+
+    // Add detection_type parameter first if it exists
+    if (detection_type && detection_type !== 'all') {
+      params.push(detection_type);
+      paramIndex++;
+    }
+
     if (search) {
+      params.push(`%${search}%`);
       query += ` AND (
         s.hostname ILIKE $${paramIndex} OR 
         s.share_name ILIKE $${paramIndex} OR
         EXISTS (
-          SELECT 1 FROM sensitive_files sf2 
-          WHERE sf2.share_id = s.id 
-          AND (sf2.file_name ILIKE $${paramIndex} OR sf2.file_path ILIKE $${paramIndex})
-        ) OR
-        EXISTS (
-          SELECT 1 FROM root_files rf 
-          WHERE rf.share_id = s.id 
-          AND rf.file_name ILIKE $${paramIndex}
+          SELECT 1 FROM sensitive_files 
+          WHERE share_id = s.id 
+          AND (file_name ILIKE $${paramIndex} OR file_path ILIKE $${paramIndex})
         )
       )`;
-      params.push(`%${search}%`);
       paramIndex++;
     }
 
-    if (detection_type && detection_type !== 'all') {
-      params.push(detection_type);
+    if (filter_type && filter_type !== 'all' && filter_value) {
+      params.push(`%${filter_value}%`);
+      query += ` AND s.${filter_type} ILIKE $${paramIndex}`;
+      paramIndex++;
     }
 
-    query += ` GROUP BY s.id ORDER BY s.hostname, s.share_name`;
-
-    // Add LIMIT clause if a positive limit is specified
-    const limit = parseInt(req.query.limit as string);
-    const page = parseInt(req.query.page as string) || 1;
-    if (limit && limit > 0) {
-      const offset = (page - 1) * limit;
-      query += ` LIMIT ${limit} OFFSET ${offset}`;
+    if (session_id && session_id !== 'all') {
+      params.push(session_id);
+      query += ` AND s.session_id = $${paramIndex}`;
+      paramIndex++;
     }
 
-    console.log('Executing query:', query, 'with params:', params);
+    query += ' GROUP BY s.id ORDER BY s.hostname, s.share_name';
+
+    console.log('Query:', query); // Debug log
+    console.log('Params:', params); // Debug log
+
     const result = await pool.query(query, params);
-    console.log(`Found ${result.rows.length} shares`);
-    
     res.json(result.rows);
   } catch (err) {
     console.error('Failed to fetch shares:', err);
@@ -890,6 +900,75 @@ app.get('/api/shares/:id/structure', async (req, res) => {
   } catch (err) {
     console.error('Failed to fetch share structure:', err);
     res.status(500).json({ error: 'Failed to fetch share structure' });
+  }
+});
+
+// Get all sensitive patterns
+app.get('/api/settings/sensitive-patterns', async (req, res) => {
+  try {
+    const query = `
+      SELECT id, pattern, type, description, enabled, 
+             created_at, updated_at
+      FROM sensitive_patterns
+      ORDER BY type, pattern
+    `;
+    console.log('Executing query:', query); // Debug log
+    const result = await pool.query(query);
+    console.log('Query result:', result.rows); // Debug log
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Failed to fetch sensitive patterns:', err);
+    res.status(500).json({ error: 'Failed to fetch sensitive patterns' });
+  }
+});
+
+// Add new sensitive pattern
+app.post('/api/settings/sensitive-patterns', async (req: Request<{}, {}, AddPatternRequest>, res: Response) => {
+  try {
+    const { pattern, type, description } = req.body;
+    const query = `
+      INSERT INTO sensitive_patterns (pattern, type, description)
+      VALUES ($1, $2, $3)
+      RETURNING id, pattern, type, description, enabled, created_at, updated_at
+    `;
+    const result = await pool.query<SensitivePattern>(query, [pattern, type, description]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Failed to add sensitive pattern:', err);
+    res.status(500).json({ error: 'Failed to add sensitive pattern' });
+  }
+});
+
+// Update sensitive pattern
+app.put('/api/settings/sensitive-patterns/:id', async (req: Request<{id: string}, {}, UpdatePatternRequest>, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { pattern, type, description, enabled } = req.body;
+    const query = `
+      UPDATE sensitive_patterns 
+      SET pattern = $1, type = $2, description = $3, enabled = $4, 
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $5
+      RETURNING id, pattern, type, description, enabled, created_at, updated_at
+    `;
+    const result = await pool.query<SensitivePattern>(query, [pattern, type, description, enabled, id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Failed to update sensitive pattern:', err);
+    res.status(500).json({ error: 'Failed to update sensitive pattern' });
+  }
+});
+
+// Delete sensitive pattern
+app.delete('/api/settings/sensitive-patterns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = 'DELETE FROM sensitive_patterns WHERE id = $1';
+    await pool.query(query, [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete sensitive pattern:', err);
+    res.status(500).json({ error: 'Failed to delete sensitive pattern' });
   }
 });
 

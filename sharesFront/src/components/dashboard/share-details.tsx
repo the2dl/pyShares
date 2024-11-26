@@ -43,7 +43,7 @@ interface ShareDetailsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   searchQuery: string;
-  detectionFilter: DetectionType | 'all';
+  detectionFilter: string | 'all';
 }
 
 function formatFileSize(bytes: number | string): string {
@@ -409,14 +409,9 @@ export function ShareDetails({
                               </TableCell>
                               <TableCell>
                                 <div className="flex flex-wrap gap-1">
-                                  {(Array.isArray(file.detection_types) 
-                                    ? file.detection_types 
-                                    : typeof file.detection_types === 'string' 
-                                      ? JSON.parse(file.detection_types) 
-                                      : []
-                                  ).map((type: string) => (
+                                  {file.detection_types.map((type: string) => (
                                     <Badge key={type} variant="outline">
-                                      {type}
+                                      {type.charAt(0).toUpperCase() + type.slice(1)}
                                     </Badge>
                                   ))}
                                 </div>

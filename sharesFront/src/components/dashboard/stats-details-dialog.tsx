@@ -343,24 +343,9 @@ export function StatsDetailsDialog({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {(Array.isArray(file.detection_types) 
-                            ? file.detection_types 
-                            : typeof file.detection_types === 'string' 
-                              ? JSON.parse(file.detection_types) 
-                              : [file.detection_type]
-                          ).map((type: string) => (
-                            <Badge
-                              key={type}
-                              variant="secondary"
-                              className={
-                                type.toLowerCase() === 'password'
-                                  ? 'bg-red-500'
-                                  : type.toLowerCase() === 'pii'
-                                  ? 'bg-yellow-500'
-                                  : 'bg-blue-500'
-                              }
-                            >
-                              {type}
+                          {file.detection_types.map((type: string) => (
+                            <Badge key={type} variant="outline">
+                              {type.charAt(0).toUpperCase() + type.slice(1)}
                             </Badge>
                           ))}
                         </div>
@@ -628,6 +613,13 @@ export function StatsDetailsDialog({
           </ScrollArea>
         </DialogContent>
       )}
+      <ShareDetails
+        share={selectedShare}
+        open={shareDetailsOpen}
+        onOpenChange={setShareDetailsOpen}
+        searchQuery=""
+        detectionFilter="all"
+      />
     </Dialog>
   );
 }
