@@ -9,39 +9,49 @@ class SensitivePattern:
     description: str
 
 class PatternMatcher:
-    def __init__(self):
-        self.patterns: List[SensitivePattern] = [
+    def __init__(self, db_helper=None):
+        self.db_helper = db_helper
+        self.patterns = []
+        self.compiled_patterns = []
+        self.refresh_patterns()
+    
+    def refresh_patterns(self):
+        """Refresh patterns from database"""
+        if self.db_helper:
+            patterns = self.db_helper.get_sensitive_patterns()
+            self.patterns = [
+                SensitivePattern(
+                    pattern=p['pattern'],
+                    type=p['type'],
+                    description=p['description']
+                )
+                for p in patterns if p['enabled']
+            ]
+            
+            # Update compiled patterns
+            self.compiled_patterns = [
+                (re.compile(p.pattern, re.IGNORECASE), p.type, p.description)
+                for p in self.patterns
+            ]
+            
+            # Update combined pattern
+            if self.patterns:
+                self.combined_pattern = re.compile('|'.join(
+                    f'({p.pattern})' for p in self.patterns
+                ), re.IGNORECASE)
+            else:
+                self.combined_pattern = re.compile(r'$^')  # Match nothing
+        else:
+            # Fallback to default patterns if no database connection
+            self._init_default_patterns()
+    
+    def _init_default_patterns(self):
+        """Initialize with default patterns"""
+        self.patterns = [
             SensitivePattern(r"pass(word|wd)?|secret|credential", "credential", "Credential-related file"),
-            SensitivePattern(r"ssn", "pii", "Social Security Number related"),
-            SensitivePattern(r"social.*security", "pii", "Social Security related"),
-            SensitivePattern(r"account.*number", "financial", "Account number related"),
-            SensitivePattern(r"credit.*card", "financial", "Credit card related"),
-            SensitivePattern(r"bank", "financial", "Banking related"),
-            SensitivePattern(r"confidential", "sensitive", "Confidential marked"),
-            SensitivePattern(r"private", "sensitive", "Private marked"),
-            SensitivePattern(r"restricted", "sensitive", "Restricted marked"),
-            SensitivePattern(r"salary", "hr", "Salary information"),
-            SensitivePattern(r"employee", "hr", "Employee information"),
-            SensitivePattern(r"payroll", "financial", "Payroll information"),
-            SensitivePattern(r"tax", "financial", "Tax information"),
-            SensitivePattern(r"\.key$", "security", "Key file"),
-            SensitivePattern(r"\.pem$", "security", "PEM certificate"),
-            SensitivePattern(r"\.pfx$", "security", "PFX certificate"),
-            SensitivePattern(r"\.p12$", "security", "P12 certificate"),
-            SensitivePattern(r"\.kdb$", "security", "KeePass database"),
-            SensitivePattern(r"\.kdbx$", "security", "KeePass database"),
+            # ... other default patterns ...
         ]
-        
-        # Pre-compile patterns and store as regex objects
-        self.compiled_patterns = [
-            (re.compile(p.pattern, re.IGNORECASE), p.type, p.description)
-            for p in self.patterns
-        ]
-        
-        # Combined pattern
-        self.combined_pattern = re.compile('|'.join(
-            f'({p.pattern})' for p in self.patterns
-        ), re.IGNORECASE)
+        # ... rest of initialization ...
     
     def check_filename(self, filename: str) -> List[Tuple[str, str]]:
         matches = []

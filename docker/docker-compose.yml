@@ -3,7 +3,7 @@ services:
     image: postgres:17
     environment:
       POSTGRES_USER: fileshare_scanner
-      POSTGRES_PASSWORD: your_password_here
+      POSTGRES_PASSWORD: f00dballz
       POSTGRES_DB: fileshare_db
     ports:
       - "5432:5432"

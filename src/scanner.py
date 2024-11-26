@@ -63,7 +63,14 @@ class ShareDetails:
             'share_name': self.share_name,
             'access_level': self.access_level.value,
             'error_message': self.error_message,
-            'root_files': self.root_files,
+            'root_files': [{
+                'file_name': file['name'],
+                'file_type': file['type'],
+                'file_size': file['size'],
+                'attributes': ','.join(file['attributes']),
+                'created_time': file['created'],
+                'modified_time': file['modified']
+            } for file in self.root_files],
             'share_permissions': self.share_permissions,
             'total_files': self.total_files,
             'total_dirs': self.total_dirs,
@@ -111,10 +118,11 @@ def with_timeout(seconds: int) -> Callable:
 class ShareScanner:
     console = Console()  # Class-level console
 
-    def __init__(self, config: Config, db_helper: DatabaseHelper):
+    def __init__(self, config: Config, db_helper: DatabaseHelper, session_id: int = None):
         self.config = config
         self.db_helper = db_helper
-        self.pattern_matcher = PatternMatcher()
+        self.session_id = session_id
+        self.pattern_matcher = PatternMatcher(db_helper)
         self.share_stats = {
             ShareAccess.FULL_ACCESS: set(),
             ShareAccess.READ_ONLY: set(),
@@ -123,6 +131,14 @@ class ShareScanner:
         }
         self.batch_size = 1000
         self._cancel_event = threading.Event()
+        self.total_shares_processed = 0
+        self.total_sensitive_files = 0
+        self._progress_callback = None
+
+    def set_progress_callback(self, callback: Callable[[str, int, int], None]) -> None:
+        """Set callback for progress updates
+        callback(current_host: str, processed: int, total: int)"""
+        self._progress_callback = callback
 
     def resolve_host(self, hostname: str) -> Optional[str]:
         """Resolve hostname to IP address"""
@@ -176,21 +192,30 @@ class ShareScanner:
             attrs.append('DIR')
         if file_data.is_readonly():
             attrs.append('READ_ONLY')
+        if file_data.is_hidden():
+            attrs.append('HIDDEN')
 
-        # Some files might not have all timestamps
+        # Convert timestamps properly
+        created_time = None
+        modified_time = None
+        
         try:
-            created_time = datetime.fromtimestamp(file_data.get_ctime()).strftime('%Y-%m-%d %H:%M:%S')
+            created = file_data.get_ctime_epoch()
+            if created:
+                created_time = datetime.fromtimestamp(created).isoformat()
         except:
-            created_time = None
+            pass
 
         try:
-            modified_time = datetime.fromtimestamp(file_data.get_mtime()).strftime('%Y-%m-%d %H:%M:%S')
+            modified = file_data.get_mtime_epoch()
+            if modified:
+                modified_time = datetime.fromtimestamp(modified).isoformat()
         except:
-            modified_time = None
+            pass
 
         return {
             'name': file_data.get_longname(),
-            'type': 'Directory' if 'DIR' in attrs else 'File',
+            'type': 'Directory' if file_data.is_directory() else 'File',
             'size': file_data.get_filesize(),
             'attributes': attrs,
             'created': created_time,
@@ -200,12 +225,16 @@ class ShareScanner:
     def scan_share_root(self, smb, share_name: str) -> dict:
         """Scan root directory of share for initial enumeration"""
         try:
+            ShareScanner.console.print(f"      [cyan]Starting root scan for {share_name}[/cyan]")
             root_listing = []
             total_files = 0
             total_dirs = 0
             hidden_files = 0
 
-            for file_data in smb.listPath(share_name, '*'):
+            files = smb.listPath(share_name, '*')
+            ShareScanner.console.print(f"      [cyan]Found files in root, processing...[/cyan]")
+
+            for file_data in files:
                 name = file_data.get_longname()
                 if name in ['.', '..']:
                     continue
@@ -213,6 +242,7 @@ class ShareScanner:
                 try:
                     file_info = self.get_file_attributes(file_data)
                     root_listing.append(file_info)
+                    ShareScanner.console.print(f"      [green]Collected: {name} ({file_info['type']})[/green]")
 
                     if file_info['type'] == 'Directory':
                         total_dirs += 1
@@ -223,17 +253,18 @@ class ShareScanner:
                         hidden_files += 1
 
                 except Exception as e:
-                    print(f"Error processing file {name} in {share_name}: {str(e)}")
+                    ShareScanner.console.print(f"      [red]Error processing file {name}: {str(e)}[/red]")
                     continue
 
+            ShareScanner.console.print(f"      [cyan]Root scan complete. Found {len(root_listing)} items[/cyan]")
             return {
-                'root_listing': root_listing[:20],  # Limit to first 20 entries
+                'root_listing': root_listing,
                 'total_files': total_files,
                 'total_dirs': total_dirs,
                 'hidden_files': hidden_files
             }
         except Exception as e:
-            print(f"Error scanning root of {share_name}: {str(e)}")
+            ShareScanner.console.print(f"      [red]Error scanning root of {share_name}: {str(e)}[/red]")
             return None
 
     def get_share_permissions(self, smb, share_name: str) -> list:
@@ -304,13 +335,12 @@ class ShareScanner:
     def scan_network(self, hosts: List[str]) -> None:
         valid_hosts = [h for h in hosts if h and h != "[]"]
         total_hosts = len(valid_hosts)
+        processed_hosts = 0
         
         ShareScanner.console.print(f"\n[bold]Starting scan of {total_hosts} hosts[/bold]")
         ShareScanner.console.print(f"[bold]Threads:[/bold] {self.config.DEFAULT_THREADS}")
         ShareScanner.console.print(f"[bold]Timeouts:[/bold] Host={self.config.HOST_SCAN_TIMEOUT}s, Share={self.config.SCAN_TIMEOUT}s\n")
         
-        total_shares_processed = 0
-        total_sensitive_files = 0
         storage_batch = []
         
         for i in range(0, total_hosts, self.batch_size):
@@ -323,31 +353,34 @@ class ShareScanner:
                 }
                 
                 for future in as_completed(future_to_host):
+                    host = future_to_host[future]
+                    processed_hosts += 1
+                    
+                    # Call progress callback if set
+                    if self._progress_callback:
+                        self._progress_callback(host, processed_hosts, total_hosts)
+                    
                     try:
                         result = future.result()
                         if result['success'] and 'shares' in result:
                             storage_batch.extend(result['shares'])
                             
                             if len(storage_batch) >= self.batch_size:
-                                shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
-                                total_shares_processed += shares_count
-                                total_sensitive_files += sensitive_count
+                                shares_count, sensitive_count = self.db_helper.store_results(storage_batch, self.session_id)
+                                self.total_shares_processed += shares_count
+                                self.total_sensitive_files += sensitive_count
                                 storage_batch = []
                     except Exception as e:
-                        pass
+                        ShareScanner.console.print(f"[red]Error processing {host}: {str(e)}[/red]")
 
         # Store any remaining results
         if storage_batch:
             try:
-                shares_count, sensitive_count = self.db_helper.store_results(storage_batch)
-                total_shares_processed += shares_count
-                total_sensitive_files += sensitive_count
+                shares_count, sensitive_count = self.db_helper.store_results(storage_batch, self.session_id)
+                self.total_shares_processed += shares_count
+                self.total_sensitive_files += sensitive_count
             except Exception as e:
                 ShareScanner.console.print(f"[red]Error storing final results: {str(e)}[/red]")
-
-        ShareScanner.console.print("\n[bold green]Scan Summary:[/bold green]")
-        ShareScanner.console.print(f"Total shares processed: {total_shares_processed}")
-        ShareScanner.console.print(f"Total sensitive files found: {total_sensitive_files}")
 
     def write_results_csv(self, results: List[ShareResult]) -> None:
         """Write scan results to CSV file"""
@@ -433,12 +466,14 @@ class ShareScanner:
                 share_detail = ShareDetails(hostname, share_name, access_level)
                 
                 if access_level in [ShareAccess.FULL_ACCESS, ShareAccess.READ_ONLY]:
+                    ShareScanner.console.print(f"      [cyan]Starting root scan for {share_name}...[/cyan]")
                     root_info = self.scan_share_root(smb, share_name)
                     if root_info:
                         share_detail.root_files = root_info['root_listing']
                         share_detail.total_files = root_info['total_files']
                         share_detail.total_dirs = root_info['total_dirs']
                         share_detail.hidden_files = root_info['hidden_files']
+                        ShareScanner.console.print(f"      [green]Root files collected: {len(share_detail.root_files)}[/green]")
 
                     if self.config.SCAN_FOR_SENSITIVE:
                         sensitive_result = self.scan_share_for_sensitive(smb, share_name)
@@ -448,6 +483,7 @@ class ShareScanner:
                 result_queue.put(share_detail)
                 
             except Exception as e:
+                ShareScanner.console.print(f"      [red]Error in scan worker: {str(e)}[/red]")
                 result_queue.put(None)
 
         # Start the scan in a separate thread
