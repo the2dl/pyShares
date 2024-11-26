@@ -387,7 +387,11 @@ export function App() {
 
                   <Select
                     value={filterType}
-                    onValueChange={(value) => setFilterType(value as 'all' | 'hostname' | 'share_name')}
+                    onValueChange={(value) => {
+                      setFilterType(value as 'all' | 'hostname' | 'share_name');
+                      // Reset filter value when changing types
+                      setFilterValue('');
+                    }}
                   >
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="Filter by" />
@@ -399,31 +403,31 @@ export function App() {
                     </SelectContent>
                   </Select>
 
-                  {filterType !== 'all' && (
+                  {filterType === 'all' ? (
+                    <Select
+                      value={detectionFilter}
+                      onValueChange={(value) => setDetectionFilter(value as DetectionType | 'all')}
+                    >
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        {detectionTypes.map(type => (
+                          <SelectItem key={type} value={type}>
+                            {type.charAt(0).toUpperCase() + type.slice(1)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
                     <Input
                       placeholder={`Enter ${filterType === 'hostname' ? 'hostname' : 'share name'}...`}
                       value={filterValue}
                       onChange={(e) => setFilterValue(e.target.value)}
-                      className="w-[200px]"
+                      className="w-[180px]"
                     />
                   )}
-
-                  <Select
-                    value={detectionFilter}
-                    onValueChange={(value) => setDetectionFilter(value as DetectionType | 'all')}
-                  >
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Filter by type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      {detectionTypes.map(type => (
-                        <SelectItem key={type} value={type}>
-                          {type.charAt(0).toUpperCase() + type.slice(1)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
 
