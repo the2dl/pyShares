@@ -50,16 +50,11 @@ app.get('/api/shares', async (req, res) => {
       params.push(session_id);
     }
 
-    // If detection_type is provided, add it
-    if (detection_type && detection_type !== 'all') {
-      params.push(detection_type);
-      paramIndex++;
-    }
-
-    // If search is provided, add it
-    if (search) {
-      params.push(`%${search}%`);
-      paramIndex++;
+    // Add filter conditions
+    let filterCondition = '';
+    if (filter_type && filter_type !== 'all' && filter_value) {
+      params.push(`%${filter_value}%`);
+      filterCondition = `AND s.${filter_type} ILIKE $${++paramIndex}`;
     }
 
     let query = `
@@ -77,28 +72,25 @@ app.get('/api/shares', async (req, res) => {
           `
         }
       ),
-      filtered_files AS (
-        SELECT sf.share_id, sf.id as file_id
+      filtered_sensitive_files AS (
+        SELECT 
+          sf.share_id,
+          sf.id as file_id
         FROM sensitive_files sf
-        WHERE 1=1
         ${detection_type && detection_type !== 'all' 
-          ? `AND EXISTS (
-              SELECT 1 FROM sensitive_patterns sp 
-              WHERE sp.type = $2
-              AND sp.enabled = true
-              AND sf.detection_type = sp.type
-            )` 
+          ? `WHERE sf.detection_type = $${++paramIndex}` 
           : ''}
       )
       SELECT 
         s.*,
         COUNT(DISTINCT ff.file_id) as sensitive_file_count
       FROM filtered_shares s
-      LEFT JOIN filtered_files ff ON s.id = ff.share_id
+      LEFT JOIN filtered_sensitive_files ff ON s.id = ff.share_id
       WHERE 1=1
+      ${filterCondition}
       ${search ? `
         AND (
-          s.hostname ILIKE $${paramIndex}
+          s.hostname ILIKE $${++paramIndex}
           OR s.share_name ILIKE $${paramIndex}
           OR EXISTS (
             SELECT 1 
@@ -128,10 +120,26 @@ app.get('/api/shares', async (req, res) => {
         s.hidden_files,
         s.scan_time,
         s.session_id
+      HAVING ${detection_type && detection_type !== 'all' 
+        ? 'COUNT(DISTINCT ff.file_id) > 0'
+        : '1=1'}
       ORDER BY s.hostname, s.share_name
     `;
 
+    // Add detection_type to params if it's specified
+    if (detection_type && detection_type !== 'all') {
+      params.push(detection_type);
+    }
+
+    // Add search parameter if specified
+    if (search) {
+      params.push(`%${search}%`);
+    }
+
     // Debug logging
+    console.log('Filter type:', filter_type);
+    console.log('Filter value:', filter_value);
+    console.log('Detection type:', detection_type);
     console.log('Search query:', search);
     console.log('Parameters:', params);
     console.log('Generated SQL:', query);
