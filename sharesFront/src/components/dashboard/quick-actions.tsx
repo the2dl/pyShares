@@ -48,6 +48,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { getSensitivePatterns, addSensitivePattern, updateSensitivePattern, deleteSensitivePattern } from '@/lib/api';
+import { exportData } from '@/lib/api';
+import { Checkbox } from "@/components/ui/checkbox";
+import { getScanSessions } from '@/lib/api';
+import { format } from 'date-fns';
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -73,6 +77,16 @@ interface SensitivePattern {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface ScanSession {
+  id: number;
+  start_time: string;
+  end_time: string | null;
+  total_hosts: number;
+  total_shares: number;
+  total_sensitive_files: number;
+  scan_status: 'running' | 'completed' | 'failed';
 }
 
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
@@ -106,6 +120,14 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     description: ''
   });
   const [isAddingPattern, setIsAddingPattern] = useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportOptions, setExportOptions] = useState({
+    sessionId: '',
+    includeSensitive: true,
+    includeRoot: false,
+    includeShares: true,
+  });
+  const [sessions, setSessions] = useState<ScanSession[]>([]);
 
   const actions = [
     {
@@ -140,8 +162,8 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       description: 'Export scan results',
       icon: Download,
       color: 'text-yellow-500',
-      onClick: () => {},
-      disabled: true,
+      onClick: () => setIsExportDialogOpen(true),
+      disabled: false,
     },
     {
       label: 'Settings',
@@ -458,6 +480,24 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       loadPatterns();
     }
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const fetchSessions = async () => {
+      try {
+        const sessionsData = await getScanSessions();
+        setSessions(sessionsData);
+      } catch (error) {
+        console.error('Failed to fetch sessions:', error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch scan sessions",
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchSessions();
+  }, []);
 
   return (
     <div className="grid gap-4">
@@ -796,6 +836,113 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Data</DialogTitle>
+            <DialogDescription>
+              Choose what data you want to export
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {sessions.length > 0 ? (
+              <Select
+                value={exportOptions.sessionId}
+                onValueChange={(value) => setExportOptions(prev => ({ ...prev, sessionId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select scan session" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessions
+                    .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+                    .map((session) => (
+                      <SelectItem key={session.id} value={session.id.toString()}>
+                        {format(new Date(session.start_time), 'PPpp')} 
+                        ({session.total_shares} shares)
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-center text-muted-foreground">
+                No scan sessions available
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Include in Export:</Label>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="sensitive"
+                    checked={exportOptions.includeSensitive}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, includeSensitive: checked as boolean }))
+                    }
+                  />
+                  <label htmlFor="sensitive">Sensitive Files</label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="root"
+                    checked={exportOptions.includeRoot}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, includeRoot: checked as boolean }))
+                    }
+                  />
+                  <label htmlFor="root">Root Files</label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="shares"
+                    checked={exportOptions.includeShares}
+                    onCheckedChange={(checked) => 
+                      setExportOptions(prev => ({ ...prev, includeShares: checked as boolean }))
+                    }
+                  />
+                  <label htmlFor="shares">Shares Information</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  await exportData({
+                    sessionId: parseInt(exportOptions.sessionId),
+                    includeSensitive: exportOptions.includeSensitive,
+                    includeRoot: exportOptions.includeRoot,
+                    includeShares: exportOptions.includeShares,
+                  });
+                  toast({
+                    title: "Export Successful",
+                    description: "Your data has been exported successfully",
+                  });
+                  setIsExportDialogOpen(false);
+                } catch (error) {
+                  toast({
+                    title: "Export Failed",
+                    description: error instanceof Error ? error.message : "Failed to export data",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={!exportOptions.sessionId || 
+                (!exportOptions.includeSensitive && !exportOptions.includeRoot && !exportOptions.includeShares)}
+            >
+              Export
             </Button>
           </DialogFooter>
         </DialogContent>

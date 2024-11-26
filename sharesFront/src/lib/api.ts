@@ -414,4 +414,37 @@ export async function deleteSensitivePattern(id: number): Promise<void> {
     method: 'DELETE',
   });
   if (!response.ok) throw new Error('Failed to delete sensitive pattern');
+}
+
+interface ExportOptions {
+  sessionId: number;
+  includeSensitive: boolean;
+  includeRoot: boolean;
+  includeShares: boolean;
+}
+
+export async function exportData(options: ExportOptions): Promise<void> {
+  const params = new URLSearchParams({
+    session_id: options.sessionId.toString(),
+    include_sensitive: options.includeSensitive.toString(),
+    include_root: options.includeRoot.toString(),
+    include_shares: options.includeShares.toString(),
+  });
+
+  const response = await fetch(`${API_BASE}/export?${params}`);
+  
+  if (!response.ok) {
+    throw new Error('Failed to export data');
+  }
+
+  // Trigger file download
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `export_${options.sessionId}_${new Date().toISOString()}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
 } 

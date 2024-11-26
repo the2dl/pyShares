@@ -972,6 +972,180 @@ app.delete('/api/settings/sensitive-patterns/:id', async (req, res) => {
   }
 });
 
+// Add these imports at the top if not already present
+import { createWriteStream, createReadStream } from 'fs';
+import { join } from 'path';
+import archiver from 'archiver';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+
+// Define the interface for export query parameters
+interface ExportQuery {
+  session_id?: string;
+  include_sensitive?: string;
+  include_root?: string;
+  include_shares?: string;
+}
+
+// Update the export endpoint with proper typing
+const handleExport: RequestHandler<{}, any, any, ExportQuery> = async (req, res, next) => {
+  try {
+    const { 
+      session_id, 
+      include_sensitive, 
+      include_root, 
+      include_shares 
+    } = req.query;
+
+    if (!session_id) {
+      res.status(400).json({ error: 'Session ID is required' });
+      return;
+    }
+
+    // Create temporary directory
+    const tempDir = await mkdtemp(join(tmpdir(), 'export-'));
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    const zipPath = join(tempDir, `export_${session_id}_${Date.now()}.zip`);
+    const output = createWriteStream(zipPath);
+
+    // Set up archive events and promise to track completion
+    const archiveFinished = new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      archive.on('error', reject);
+      archive.pipe(output);
+    });
+
+    // Get session info for metadata
+    const sessionQuery = `
+      SELECT * FROM scan_sessions WHERE id = $1
+    `;
+    const sessionResult = await pool.query(sessionQuery, [session_id]);
+    const session = sessionResult.rows[0];
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    // Add metadata file
+    const metadata = {
+      exported_at: new Date().toISOString(),
+      session_id: session_id,
+      session_start: session.start_time,
+      session_end: session.end_time,
+      included_data: {
+        sensitive_files: include_sensitive === 'true',
+        root_files: include_root === 'true',
+        shares: include_shares === 'true'
+      }
+    };
+    archive.append(JSON.stringify(metadata, null, 2), { name: 'metadata.json' });
+
+    // Export shares if requested
+    if (include_shares === 'true') {
+      const sharesQuery = `
+        SELECT * FROM shares WHERE session_id = $1
+      `;
+      const sharesResult = await pool.query(sharesQuery, [session_id]);
+      archive.append(JSON.stringify(sharesResult.rows, null, 2), { name: 'shares.json' });
+    }
+
+    // Export sensitive files if requested
+    if (include_sensitive === 'true') {
+      const sensitiveQuery = `
+        SELECT 
+          sf.*,
+          s.hostname,
+          s.share_name,
+          CONCAT(s.hostname, '/', s.share_name, '/', sf.file_path, '/', sf.file_name) as full_path
+        FROM sensitive_files sf
+        JOIN shares s ON sf.share_id = s.id
+        WHERE s.session_id = $1
+        ORDER BY s.hostname, s.share_name, sf.file_path, sf.file_name
+      `;
+      const sensitiveResult = await pool.query(sensitiveQuery, [session_id]);
+      
+      // Transform the data to include hierarchical path information
+      const sensitiveFiles = sensitiveResult.rows.map(row => ({
+        id: row.id,
+        hostname: row.hostname,
+        share_name: row.share_name,
+        file_path: row.file_path,
+        file_name: row.file_name,
+        full_path: row.full_path,
+        detection_type: row.detection_type,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }));
+      
+      archive.append(JSON.stringify(sensitiveFiles, null, 2), { name: 'sensitive_files.json' });
+    }
+
+    // Export root files if requested
+    if (include_root === 'true') {
+      const rootQuery = `
+        SELECT 
+          rf.*,
+          s.hostname,
+          s.share_name,
+          CONCAT(s.hostname, '/', s.share_name, '/', rf.file_name) as full_path
+        FROM root_files rf
+        JOIN shares s ON rf.share_id = s.id
+        WHERE s.session_id = $1
+        ORDER BY s.hostname, s.share_name, rf.file_name
+      `;
+      const rootResult = await pool.query(rootQuery, [session_id]);
+      
+      // Transform the data to include hierarchical path information
+      const rootFiles = rootResult.rows.map(row => ({
+        id: row.id,
+        hostname: row.hostname,
+        share_name: row.share_name,
+        file_name: row.file_name,
+        file_type: row.file_type,
+        file_size: row.file_size,
+        attributes: row.attributes,
+        full_path: row.full_path,
+        created_time: row.created_time,
+        modified_time: row.modified_time
+      }));
+      
+      archive.append(JSON.stringify(rootFiles, null, 2), { name: 'root_files.json' });
+    }
+
+    // Finalize archive
+    archive.finalize();
+
+    // Wait for archive to finish
+    await archiveFinished;
+
+    // Set response headers
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename=export_${session_id}_${Date.now()}.zip`);
+
+    // Stream the file to response
+    const readStream = createReadStream(zipPath);
+    readStream.pipe(res);
+
+    // Clean up after sending
+    res.on('finish', async () => {
+      try {
+        await rm(tempDir, { recursive: true });
+      } catch (error) {
+        console.error('Error cleaning up temp directory:', error);
+      }
+    });
+
+  } catch (err) {
+    console.error('Export failed:', err);
+    res.status(500).json({ error: 'Failed to export data' });
+    return;
+  }
+};
+
+// Register the endpoint
+app.get('/api/export', handleExport);
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 }); 
