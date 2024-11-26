@@ -128,6 +128,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     includeShares: true,
   });
   const [sessions, setSessions] = useState<ScanSession[]>([]);
+  const [editingPattern, setEditingPattern] = useState<SensitivePattern | null>(null);
 
   const actions = [
     {
@@ -499,6 +500,26 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     fetchSessions();
   }, []);
 
+  const handleEditPattern = async () => {
+    try {
+      if (!editingPattern) return;
+      
+      const updated = await updateSensitivePattern(editingPattern.id, editingPattern);
+      setPatterns(patterns.map(p => p.id === editingPattern.id ? updated : p));
+      setEditingPattern(null);
+      toast({
+        title: "Success",
+        description: "Pattern updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update pattern",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -726,7 +747,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       </Dialog>
 
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
             <DialogDescription>
@@ -739,53 +760,64 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
               <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
             </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pattern</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {patterns.map((pattern) => (
-                  <TableRow key={pattern.id}>
-                    <TableCell>{pattern.pattern}</TableCell>
-                    <TableCell>{pattern.type}</TableCell>
-                    <TableCell>{pattern.description}</TableCell>
-                    <TableCell>
-                      <Switch
-                        checked={pattern.enabled}
-                        onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm">Delete</Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete this pattern? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </TableCell>
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background">
+                  <TableRow>
+                    <TableHead>Pattern</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody className="overflow-y-auto max-h-[32rem]">
+                  {patterns.map((pattern) => (
+                    <TableRow key={pattern.id}>
+                      <TableCell>{pattern.pattern}</TableCell>
+                      <TableCell>{pattern.type}</TableCell>
+                      <TableCell>{pattern.description}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={pattern.enabled}
+                          onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setEditingPattern(pattern)}
+                          >
+                            Edit
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="destructive" size="sm">Delete</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this pattern? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           <Dialog open={isAddingPattern} onOpenChange={setIsAddingPattern}>
@@ -829,6 +861,57 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                   Cancel
                 </Button>
                 <Button onClick={handleAddPattern}>Add Pattern</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!editingPattern} onOpenChange={(open) => !open && setEditingPattern(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Edit Pattern</DialogTitle>
+                <DialogDescription>
+                  Modify the sensitive pattern detection settings
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Pattern (RegEx)</Label>
+                  <Input
+                    value={editingPattern?.pattern || ''}
+                    onChange={(e) => setEditingPattern(prev => 
+                      prev ? { ...prev, pattern: e.target.value } : null
+                    )}
+                    placeholder="e.g., pass(word|wd)?|secret"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Type</Label>
+                  <Input
+                    value={editingPattern?.type || ''}
+                    onChange={(e) => setEditingPattern(prev => 
+                      prev ? { ...prev, type: e.target.value } : null
+                    )}
+                    placeholder="e.g., credential"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Description</Label>
+                  <Input
+                    value={editingPattern?.description || ''}
+                    onChange={(e) => setEditingPattern(prev => 
+                      prev ? { ...prev, description: e.target.value } : null
+                    )}
+                    placeholder="e.g., Matches password-related files"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingPattern(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleEditPattern}>Save Changes</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
