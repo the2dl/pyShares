@@ -34,6 +34,31 @@ interface ScanStatus {
   error?: string;
 }
 
+interface ScheduleConfig {
+  trigger_type: 'cron';
+  schedule_config: {
+    day_of_week: string;
+    hour: number;
+    minute: number;
+  };
+}
+
+interface ScheduleResponse {
+  status: string;
+  job_id?: string;
+  next_run?: string;
+  error?: string;
+}
+
+interface ScheduledJob {
+  id: string;
+  name: string;
+  trigger: string;
+  next_run: string | null;
+  args: any[];
+  kwargs: any;
+}
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function fetchWithRetry(url: string, options?: RequestInit, retries = MAX_RETRIES): Promise<Response> {
@@ -153,4 +178,112 @@ export async function pollScanStatus(scanId: string, onUpdate: (status: ScanStat
   }, 5000); // Poll every 5 seconds
 
   return () => clearInterval(pollInterval);
+}
+
+export async function createSchedule(
+  credentials: ScanCredentials, 
+  scheduleConfig: ScheduleConfig
+): Promise<ScheduleResponse> {
+  try {
+    const response = await fetchWithRetry(`${SCAN_API_BASE}/schedule`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...credentials,
+        trigger_type: scheduleConfig.trigger_type,
+        schedule_config: scheduleConfig.schedule_config,
+        name: `Scheduled Scan - ${credentials.domain}`
+      }),
+    });
+
+    return response.json();
+  } catch (error) {
+    console.error('Schedule API error:', error);
+    throw error;
+  }
+}
+
+export async function getSchedules(): Promise<ScheduledJob[]> {
+  try {
+    const response = await fetchWithRetry(`${SCAN_API_BASE}/schedules`);
+    return response.json();
+  } catch (error) {
+    console.error('Get schedules error:', error);
+    throw error;
+  }
+}
+
+export async function deleteSchedule(jobId: string): Promise<ScheduleResponse> {
+  try {
+    const response = await fetchWithRetry(`${SCAN_API_BASE}/schedule/${jobId}`, {
+      method: 'DELETE',
+    });
+    return response.json();
+  } catch (error) {
+    console.error('Delete schedule error:', error);
+    throw error;
+  }
+}
+
+export function subscribeToEvents(callback: (event: any) => void) {
+  console.log('Subscribing to events...');
+  let eventSource: EventSource | null = null;
+  let retryCount = 0;
+  const MAX_RETRIES = 5;
+  const RETRY_DELAY = 5000;
+
+  const connect = () => {
+    if (eventSource) {
+      eventSource.close();
+    }
+
+    eventSource = new EventSource(`${SCAN_API_BASE}/events`);
+    
+    console.log('EventSource created, readyState:', eventSource.readyState);
+
+    eventSource.onmessage = (event) => {
+      console.log('Received event:', event.data, 'readyState:', eventSource?.readyState);
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type !== 'heartbeat') {  // Only process non-heartbeat events
+          callback(data);
+        }
+      } catch (error) {
+        console.error('Failed to parse event data:', error);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('EventSource failed:', error, 'readyState:', eventSource?.readyState);
+      eventSource?.close();
+      
+      // Always try to reconnect
+      setTimeout(connect, RETRY_DELAY);
+    };
+
+    eventSource.onopen = () => {
+      console.log('EventSource connection opened, readyState:', eventSource?.readyState);
+      retryCount = 0;
+    };
+  };
+
+  connect();
+
+  // Set up periodic connection check
+  const connectionCheck = setInterval(() => {
+    if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+      console.log('Connection check: reconnecting...');
+      connect();
+    }
+  }, 30000);
+
+  return () => {
+    if (eventSource) {
+      console.log('Closing event subscription, final readyState:', eventSource.readyState);
+      eventSource.close();
+    }
+    clearInterval(connectionCheck);
+  };
 } 

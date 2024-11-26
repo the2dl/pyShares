@@ -54,6 +54,9 @@ import { Provider as JotaiProvider } from 'jotai';
 import { ScanMonitor } from '@/components/scan-monitor';
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { subscribeToEvents } from '@/lib/scan-api';
+import { useToast } from '@/hooks/use-toast';
+import { X } from "lucide-react";
 
 const router = createBrowserRouter([
   {
@@ -69,6 +72,19 @@ const router = createBrowserRouter([
     element: <NetworkMap />,
   },
 ]);
+
+type ScanEvent = {
+  type: 'scan_complete' | 'scan_error';
+  scan_id: string;
+  domain: string;
+  timestamp: string;
+  stats?: {
+    total_hosts: number;
+    total_shares: number;
+    total_sensitive: number;
+  };
+  error?: string;
+};
 
 function Root() {
   return (
@@ -91,6 +107,7 @@ export function App() {
   const [filterValue, setFilterValue] = useState('');
   const [sessions, setSessions] = useState<ScanSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<string>('all');
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchSessions = async () => {
@@ -111,6 +128,65 @@ export function App() {
     };
     fetchSessions();
   }, []);
+
+  useEffect(() => {
+    console.log('Setting up event subscription...');
+    const unsubscribe = subscribeToEvents((event) => {
+      console.log('Received event in App:', event);
+      
+      if (event.type === 'scan_complete') {
+        toast({
+          title: "Scan Completed Successfully",
+          description: (
+            <div className="mt-2 space-y-2">
+              <p><strong>Domain:</strong> {event.domain}</p>
+              <p><strong>Statistics:</strong></p>
+              <ul className="list-disc pl-4">
+                <li>Total Hosts: {event.stats.total_hosts}</li>
+                <li>Total Shares: {event.stats.total_shares}</li>
+                <li>Sensitive Files: {event.stats.total_sensitive}</li>
+              </ul>
+              <p className="text-sm text-muted-foreground">
+                Scan ID: {event.scan_id}
+              </p>
+            </div>
+          ),
+          variant: "default",
+          action: (close) => (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={close}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ),
+        });
+      } else if (event.type === 'scan_error') {
+        toast({
+          title: "Scan Failed",
+          description: `Error: ${event.error}`,
+          variant: "destructive",
+          action: (close) => (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={close}
+              className="h-8 w-8 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          ),
+        });
+      }
+    });
+
+    return () => {
+      console.log('Cleaning up event subscription...');
+      unsubscribe();
+    };
+  }, [toast]);
 
   const fetchShares = useCallback(async () => {
     setLoading(true);
