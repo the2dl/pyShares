@@ -47,7 +47,21 @@ app.get('/api/shares', async (req, res) => {
 
     // Build the base query
     let query = `
-      WITH filtered_files AS (
+      WITH filtered_shares AS (
+        ${session_id && session_id !== 'all' 
+          ? `
+            -- When session is specified, show all shares from that session
+            SELECT * FROM shares WHERE session_id = $1
+          `
+          : `
+            -- Otherwise show latest shares
+            SELECT DISTINCT ON (hostname, share_name) *
+            FROM shares
+            ORDER BY hostname, share_name, scan_time DESC
+          `
+        }
+      ),
+      filtered_files AS (
         SELECT sf.share_id, sf.id as file_id
         FROM sensitive_files sf
         WHERE 1=1
@@ -63,19 +77,30 @@ app.get('/api/shares', async (req, res) => {
       SELECT 
         s.*,
         COUNT(DISTINCT ff.file_id) as sensitive_file_count
-      FROM shares s
+      FROM filtered_shares s
       LEFT JOIN filtered_files ff ON s.id = ff.share_id
-      LEFT JOIN sensitive_files sf ON s.id = sf.share_id
-      WHERE 1=1
-      ${detection_type && detection_type !== 'all' 
-        ? 'AND ff.share_id IS NOT NULL' 
-        : ''}
+      GROUP BY 
+        s.id, 
+        s.hostname,
+        s.share_name,
+        s.access_level,
+        s.error_message,
+        s.total_files,
+        s.total_dirs,
+        s.hidden_files,
+        s.scan_time,
+        s.session_id
+      ORDER BY s.hostname, s.share_name
     `;
 
-    // Add detection_type parameter first if it exists
+    // Initialize params array with session_id if it's specified
+    if (session_id && session_id !== 'all') {
+      params.push(session_id);
+    }
+
+    // Add other parameters as needed
     if (detection_type && detection_type !== 'all') {
       params.push(detection_type);
-      paramIndex++;
     }
 
     if (search) {
@@ -97,14 +122,6 @@ app.get('/api/shares', async (req, res) => {
       query += ` AND s.${filter_type} ILIKE $${paramIndex}`;
       paramIndex++;
     }
-
-    if (session_id && session_id !== 'all') {
-      params.push(session_id);
-      query += ` AND s.session_id = $${paramIndex}`;
-      paramIndex++;
-    }
-
-    query += ' GROUP BY s.id ORDER BY s.hostname, s.share_name';
 
     console.log('Query:', query); // Debug log
     console.log('Params:', params); // Debug log
@@ -661,7 +678,7 @@ interface FileChange {
   change_type: 'added' | 'removed' | 'modified';
 }
 
-const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (req, res, next) => {
+const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (req, res) => {
   try {
     const { session1, session2 } = req.query;
     
@@ -817,8 +834,12 @@ const compareSessions: RequestHandler<{}, any, any, ScanSessionQuery> = async (r
       differences: sharesWithFileChanges,
       summary: {
         total_differences: sharesResult.rows.length,
-        added: sharesResult.rows.filter(r => r.change_type === 'added').length,
-        removed: sharesResult.rows.filter(r => r.change_type === 'removed').length,
+        added: sharesResult.rows.filter(r => r.change_type === 'added').length +
+               sharesWithFileChanges.reduce((acc, share) => 
+                 acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'added').length || 0), 0),
+        removed: sharesResult.rows.filter(r => r.change_type === 'removed').length +
+                sharesWithFileChanges.reduce((acc, share) => 
+                  acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'removed').length || 0), 0),
         modified: sharesResult.rows.filter(r => r.change_type === 'modified').length,
         files_added: sharesWithFileChanges.reduce((acc, share) => 
           acc + (share.file_changes?.filter((f: FileChange) => f.change_type === 'added').length || 0), 0),

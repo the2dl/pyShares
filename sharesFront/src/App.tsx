@@ -366,14 +366,13 @@ export function App() {
                               <SelectValue placeholder="Select scan session" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All scan sessions</SelectItem>
                               {sessions
                                 .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
                                 .map((session) => (
                                   <SelectItem key={session.id} value={session.id.toString()}>
                                     {format(new Date(session.start_time), 'PPpp')} 
                                     ({session.total_shares} shares)
-                                    {session.id.toString() === selectedSession && " (Latest)"}
+                                    {session.id.toString() === selectedSession && " (Current)"}
                                   </SelectItem>
                                 ))}
                             </SelectContent>
