@@ -42,10 +42,26 @@ app.get('/api/shares', async (req, res) => {
   try {
     const { search, detection_type, filter_type, filter_value, session_id, page, limit } = req.query;
     
-    const params: any[] = [];
     let paramIndex = 1;
+    const params: any[] = [];
 
-    // Build the base query
+    // If session_id is provided, add it as first parameter
+    if (session_id && session_id !== 'all') {
+      params.push(session_id);
+    }
+
+    // If detection_type is provided, add it
+    if (detection_type && detection_type !== 'all') {
+      params.push(detection_type);
+      paramIndex++;
+    }
+
+    // If search is provided, add it
+    if (search) {
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
     let query = `
       WITH filtered_shares AS (
         ${session_id && session_id !== 'all' 
@@ -68,7 +84,7 @@ app.get('/api/shares', async (req, res) => {
         ${detection_type && detection_type !== 'all' 
           ? `AND EXISTS (
               SELECT 1 FROM sensitive_patterns sp 
-              WHERE sp.type = $${paramIndex} 
+              WHERE sp.type = $2
               AND sp.enabled = true
               AND sf.detection_type = sp.type
             )` 
@@ -79,6 +95,28 @@ app.get('/api/shares', async (req, res) => {
         COUNT(DISTINCT ff.file_id) as sensitive_file_count
       FROM filtered_shares s
       LEFT JOIN filtered_files ff ON s.id = ff.share_id
+      WHERE 1=1
+      ${search ? `
+        AND (
+          s.hostname ILIKE $${paramIndex}
+          OR s.share_name ILIKE $${paramIndex}
+          OR EXISTS (
+            SELECT 1 
+            FROM sensitive_files sf 
+            WHERE sf.share_id = s.id 
+            AND (
+              sf.file_name ILIKE $${paramIndex}
+              OR sf.file_path ILIKE $${paramIndex}
+            )
+          )
+          OR EXISTS (
+            SELECT 1 
+            FROM root_files rf 
+            WHERE rf.share_id = s.id 
+            AND rf.file_name ILIKE $${paramIndex}
+          )
+        )
+      ` : ''}
       GROUP BY 
         s.id, 
         s.hostname,
@@ -93,38 +131,10 @@ app.get('/api/shares', async (req, res) => {
       ORDER BY s.hostname, s.share_name
     `;
 
-    // Initialize params array with session_id if it's specified
-    if (session_id && session_id !== 'all') {
-      params.push(session_id);
-    }
-
-    // Add other parameters as needed
-    if (detection_type && detection_type !== 'all') {
-      params.push(detection_type);
-    }
-
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND (
-        s.hostname ILIKE $${paramIndex} OR 
-        s.share_name ILIKE $${paramIndex} OR
-        EXISTS (
-          SELECT 1 FROM sensitive_files 
-          WHERE share_id = s.id 
-          AND (file_name ILIKE $${paramIndex} OR file_path ILIKE $${paramIndex})
-        )
-      )`;
-      paramIndex++;
-    }
-
-    if (filter_type && filter_type !== 'all' && filter_value) {
-      params.push(`%${filter_value}%`);
-      query += ` AND s.${filter_type} ILIKE $${paramIndex}`;
-      paramIndex++;
-    }
-
-    console.log('Query:', query); // Debug log
-    console.log('Params:', params); // Debug log
+    // Debug logging
+    console.log('Search query:', search);
+    console.log('Parameters:', params);
+    console.log('Generated SQL:', query);
 
     const result = await pool.query(query, params);
     res.json(result.rows);
