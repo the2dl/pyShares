@@ -19,11 +19,10 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect, useContext } from 'react';
 import {
@@ -55,6 +54,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getScanSessions } from '@/lib/api';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Info } from 'lucide-react';
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -546,8 +546,8 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     <div className="grid gap-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {actions.map((action) => (
-          <Tooltip key={action.label}>
-            <TooltipTrigger asChild>
+          <HoverCard key={action.label}>
+            <HoverCardTrigger asChild>
               <Button
                 variant="outline"
                 className="w-full h-24 flex flex-col items-center justify-center gap-2"
@@ -561,242 +561,397 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                   "opacity-50": action.disabled // Add opacity to text when disabled
                 })}>{action.label}</span>
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>
+            </HoverCardTrigger>
+            <HoverCardContent>
               <p>{action.description}</p>
               {action.disabled && <p className="text-xs text-muted-foreground">Coming soon</p>}
-            </TooltipContent>
-          </Tooltip>
+            </HoverCardContent>
+          </HoverCard>
         ))}
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Start New Scan</DialogTitle>
             <DialogDescription>
               Enter domain credentials to start a new network scan
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="dc">Domain Controller IP</Label>
-              <Input
-                id="dc"
-                value={credentials.dc}
-                onChange={(e) => setCredentials(prev => ({ ...prev, dc: e.target.value }))}
-                placeholder="192.168.1.100"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="domain">Domain</Label>
-              <Input
-                id="domain"
-                value={credentials.domain}
-                onChange={(e) => setCredentials(prev => ({ ...prev, domain: e.target.value }))}
-                placeholder="company.local"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                value={credentials.username}
-                onChange={(e) => setCredentials(prev => ({ ...prev, username: e.target.value }))}
-                placeholder="domain\username"
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={credentials.password}
-                onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
-              />
-            </div>
 
-            <div className="space-y-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full flex justify-between items-center"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                Advanced Options
-                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
+          <Tabs defaultValue="basic" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="basic">Basic Settings</TabsTrigger>
+              <TabsTrigger value="advanced">Advanced Settings</TabsTrigger>
+            </TabsList>
 
-              {showAdvanced && (
-                <div className="grid gap-4 p-4 border rounded-md">
-                  <div className="grid grid-cols-2 gap-4">
+            <TabsContent value="basic" className="space-y-4">
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="dc">Domain Controller IP</Label>
+                  <Input
+                    id="dc"
+                    value={credentials.dc}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, dc: e.target.value }))}
+                    placeholder="192.168.1.100"
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="domain">Domain</Label>
+                  <Input
+                    id="domain"
+                    value={credentials.domain}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, domain: e.target.value }))}
+                    placeholder="company.local"
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    value={credentials.username}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, username: e.target.value }))}
+                    placeholder="domain\username"
+                  />
+                </div>
+                
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={credentials.password}
+                    onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={scheduleMode}
+                    onCheckedChange={setScheduleMode}
+                  />
+                  <Label>Schedule Scan</Label>
+                </div>
+
+                {scheduleMode && (
+                  <div className="grid gap-4">
                     <div className="grid gap-2">
-                      <Label htmlFor="ldap_port">LDAP Port</Label>
-                      <Input
-                        id="ldap_port"
-                        type="number"
-                        value={credentials.ldap_port}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, ldap_port: parseInt(e.target.value) }))}
-                      />
+                      <Label>Day of Week</Label>
+                      <Select
+                        value={scheduleConfig.schedule_config.day_of_week}
+                        onValueChange={(value) => setScheduleConfig(prev => ({
+                          ...prev,
+                          schedule_config: { ...prev.schedule_config, day_of_week: value }
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
+                            <SelectItem key={day} value={day}>
+                              {day.charAt(0).toUpperCase() + day.slice(1)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="threads">Threads</Label>
-                      <Input
-                        id="threads"
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={credentials.threads}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, threads: parseInt(e.target.value) }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="ou">Organizational Unit</Label>
-                      <Input
-                        id="ou"
-                        value={credentials.ou}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, ou: e.target.value }))}
-                        placeholder="Optional"
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="filter">LDAP Filter</Label>
-                      <Input
-                        id="filter"
-                        value={credentials.filter}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, filter: e.target.value }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="batch_size">Batch Size</Label>
-                      <Input
-                        id="batch_size"
-                        type="number"
-                        value={credentials.batch_size}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, batch_size: parseInt(e.target.value) }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="max_depth">Max Depth</Label>
-                      <Input
-                        id="max_depth"
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={credentials.max_depth}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, max_depth: parseInt(e.target.value) }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="scan_timeout">Scan Timeout (s)</Label>
-                      <Input
-                        id="scan_timeout"
-                        type="number"
-                        value={credentials.scan_timeout}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, scan_timeout: parseInt(e.target.value) }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="host_timeout">Host Timeout (s)</Label>
-                      <Input
-                        id="host_timeout"
-                        type="number"
-                        value={credentials.host_timeout}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, host_timeout: parseInt(e.target.value) }))}
-                      />
-                    </div>
-
-                    <div className="grid gap-2">
-                      <Label htmlFor="max_computers">Max Computers</Label>
-                      <Input
-                        id="max_computers"
-                        type="number"
-                        value={credentials.max_computers}
-                        onChange={(e) => setCredentials(prev => ({ ...prev, max_computers: parseInt(e.target.value) }))}
-                      />
+                      <Label>Time</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="23"
+                          value={scheduleConfig.schedule_config.hour}
+                          onChange={(e) => setScheduleConfig(prev => ({
+                            ...prev,
+                            schedule_config: { ...prev.schedule_config, hour: parseInt(e.target.value) }
+                          }))}
+                          placeholder="Hour (0-23)"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={scheduleConfig.schedule_config.minute}
+                          onChange={(e) => setScheduleConfig(prev => ({
+                            ...prev,
+                            schedule_config: { ...prev.schedule_config, minute: parseInt(e.target.value) }
+                          }))}
+                          placeholder="Minute (0-59)"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2 mb-4">
-            <Switch
-              checked={scheduleMode}
-              onCheckedChange={setScheduleMode}
-            />
-            <Label>Schedule Scan</Label>
-          </div>
-
-          {scheduleMode && (
-            <div className="grid gap-4">
-              <div className="grid gap-2">
-                <Label>Day of Week</Label>
-                <Select
-                  value={scheduleConfig.schedule_config.day_of_week}
-                  onValueChange={(value) => setScheduleConfig(prev => ({
-                    ...prev,
-                    schedule_config: { ...prev.schedule_config, day_of_week: value }
-                  }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map(day => (
-                      <SelectItem key={day} value={day}>
-                        {day.charAt(0).toUpperCase() + day.slice(1)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                )}
               </div>
+            </TabsContent>
 
-              <div className="grid gap-2">
-                <Label>Time</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="23"
-                    value={scheduleConfig.schedule_config.hour}
-                    onChange={(e) => setScheduleConfig(prev => ({
-                      ...prev,
-                      schedule_config: { ...prev.schedule_config, hour: parseInt(e.target.value) }
-                    }))}
-                    placeholder="Hour (0-23)"
-                  />
-                  <Input
-                    type="number"
-                    min="0"
-                    max="59"
-                    value={scheduleConfig.schedule_config.minute}
-                    onChange={(e) => setScheduleConfig(prev => ({
-                      ...prev,
-                      schedule_config: { ...prev.schedule_config, minute: parseInt(e.target.value) }
-                    }))}
-                    placeholder="Minute (0-59)"
-                  />
+            <TabsContent value="advanced" className="space-y-4">
+              <div className="grid gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="ldap_port">LDAP Port</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="ldap_port"
+                            type="number"
+                            value={credentials.ldap_port}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, ldap_port: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">LDAP Port</h4>
+                          <p className="text-sm text-muted-foreground">
+                            LDAP port for domain controller connection. Default is 389
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="threads">Threads</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="threads"
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={credentials.threads}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, threads: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Threads</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Number of concurrent scan threads. Must be between 1 and 100 (Default: 10)
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="ou">Organizational Unit</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="ou"
+                            value={credentials.ou}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, ou: e.target.value }))}
+                            placeholder="Optional"
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Organizational Unit</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Specific OU to scan. Optional - leave empty to scan entire domain
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="filter">LDAP Filter</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="filter"
+                            value={credentials.filter}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, filter: e.target.value }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">LDAP Filter</h4>
+                          <p className="text-sm text-muted-foreground">
+                            LDAP filter for computer search. Default: all
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="batch_size">Batch Size</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="batch_size"
+                            type="number"
+                            value={credentials.batch_size}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, batch_size: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Batch Size</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Number of hosts to process in each batch. Default: 1000
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="max_depth">Max Depth</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="max_depth"
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={credentials.max_depth}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, max_depth: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Max Depth</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Maximum directory depth to scan. Must be between 1 and 10 (Default: 5)
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="scan_timeout">Scan Timeout (s)</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="scan_timeout"
+                            type="number"
+                            value={credentials.scan_timeout}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, scan_timeout: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent 
+                        side="top"
+                        align="start"
+                        sideOffset={5}
+                        className="w-[280px] p-4"
+                      >
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Scan Timeout</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Timeout for individual share scans in seconds. Default: 30
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="host_timeout">Host Timeout (s)</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="host_timeout"
+                            type="number"
+                            value={credentials.host_timeout}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, host_timeout: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Host Timeout</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Timeout for entire host scan in seconds. Default: 300
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="max_computers">Max Computers</Label>
+                            <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                          </div>
+                          <Input
+                            id="max_computers"
+                            type="number"
+                            value={credentials.max_computers}
+                            onChange={(e) => setCredentials(prev => ({ ...prev, max_computers: parseInt(e.target.value) }))}
+                          />
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent side="top" align="start" sideOffset={5} className="w-[280px] p-4">
+                        <div className="space-y-2">
+                          <h4 className="font-medium">Max Computers</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Maximum number of computers to process. Default: 800000
+                          </p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-          
+            </TabsContent>
+          </Tabs>
+
           {renderScanStatus()}
           
-          <div className="flex justify-end gap-3">
+          <DialogFooter>
             <Button variant="outline" onClick={handleCloseDialog}>
               Cancel
             </Button>
@@ -806,7 +961,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             >
               {scheduleMode ? 'Schedule Scan' : 'Start Scan Now'}
             </Button>
-          </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -886,28 +1041,12 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             <DialogDescription>Configure scan and detection settings</DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="patterns" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="patterns">Sensitive Patterns</TabsTrigger>
-              <TabsTrigger value="scan">Scan Settings</TabsTrigger>
-              <TabsTrigger value="schedules">Schedules</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="patterns" className="space-y-4">
-              <div className="flex justify-end">
-                <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
-              </div>
-              {/* Patterns table */}
-            </TabsContent>
-
-            <TabsContent value="scan">
-              {/* Scan settings */}
-            </TabsContent>
-
-            <TabsContent value="schedules">
-              {/* Schedule settings */}
-            </TabsContent>
-          </Tabs>
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
+            </div>
+            {/* Patterns table will go here */}
+          </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>Close</Button>
