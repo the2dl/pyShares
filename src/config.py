@@ -43,19 +43,25 @@ class Config:
         # Initialize empty credentials
         self._credentials = {}
             
-        # Load database settings from environment
+        # Load database settings from environment (these should still use env vars)
         self.DB_HOST = os.getenv("DB_HOST", self.DB_HOST)
         self.DB_PORT = int(os.getenv("DB_PORT", self.DB_PORT))
         self.DB_NAME = os.getenv("DB_NAME", self.DB_NAME)
         self.DB_USER = os.getenv("DB_USER", self.DB_USER)
         self.DB_PASSWORD = os.getenv("DB_PASSWORD", self.DB_PASSWORD)
         
-        # Load scanning settings from environment
-        self.MAX_SCAN_DEPTH = int(os.getenv("MAX_SCAN_DEPTH", self.MAX_SCAN_DEPTH))
-        self.SCAN_TIMEOUT = int(os.getenv("SCAN_TIMEOUT", self.SCAN_TIMEOUT))
-        self.HOST_SCAN_TIMEOUT = int(os.getenv("HOST_SCAN_TIMEOUT", self.HOST_SCAN_TIMEOUT))
-        
-        self.MAX_COMPUTERS = int(os.getenv("MAX_COMPUTERS", self.MAX_COMPUTERS))
+        # Only set scanning settings from environment if not explicitly provided
+        # This ensures runtime values take precedence
+        if self.MAX_SCAN_DEPTH == 5:  # Default value
+            self.MAX_SCAN_DEPTH = int(os.getenv("MAX_SCAN_DEPTH", self.MAX_SCAN_DEPTH))
+        if self.SCAN_TIMEOUT == 30:  # Default value
+            self.SCAN_TIMEOUT = int(os.getenv("SCAN_TIMEOUT", self.SCAN_TIMEOUT))
+        if self.HOST_SCAN_TIMEOUT == 300:  # Default value
+            self.HOST_SCAN_TIMEOUT = int(os.getenv("HOST_SCAN_TIMEOUT", self.HOST_SCAN_TIMEOUT))
+        if self.MAX_COMPUTERS == 800000:  # Default value
+            self.MAX_COMPUTERS = int(os.getenv("MAX_COMPUTERS", self.MAX_COMPUTERS))
+        if self.DEFAULT_THREADS == 10:  # Default value
+            self.DEFAULT_THREADS = int(os.getenv("DEFAULT_THREADS", self.DEFAULT_THREADS))
     
     @property
     def LDAP_USER(self):

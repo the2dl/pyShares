@@ -161,6 +161,15 @@ def start_scan():
         
         def run_scan_with_status():
             try:
+                # Add debug logging for configuration
+                logger.info("Scan configuration:")
+                logger.info(f"  Threads: {scan_config['threads']}")
+                logger.info(f"  Max Depth: {scan_config['max_depth']}")
+                logger.info(f"  Batch Size: {scan_config['batch_size']}")
+                logger.info(f"  Scan Timeout: {scan_config['scan_timeout']}")
+                logger.info(f"  Host Timeout: {scan_config['host_timeout']}")
+                logger.info(f"  Max Computers: {scan_config['max_computers']}")
+
                 config = Config(
                     LDAP_SERVER=scan_config['dc'],
                     LDAP_DOMAIN=scan_config['domain'],
@@ -172,64 +181,107 @@ def start_scan():
                     HOST_SCAN_TIMEOUT=scan_config['host_timeout'],
                     MAX_COMPUTERS=scan_config['max_computers']
                 )
+                
+                # Verify config after initialization
+                logger.info("Configured values:")
+                logger.info(f"  Threads: {config.DEFAULT_THREADS}")
+                logger.info(f"  Max Depth: {config.MAX_SCAN_DEPTH}")
+                logger.info(f"  Batch Size: {config.BATCH_SIZE}")
+                logger.info(f"  Scan Timeout: {config.SCAN_TIMEOUT}")
+                logger.info(f"  Host Timeout: {config.HOST_SCAN_TIMEOUT}")
+                logger.info(f"  Max Computers: {config.MAX_COMPUTERS}")
+
                 config.set_credentials(scan_config['username'], scan_config['password'])
 
-                ldap_helper = LDAPHelper(config)
-                db_helper = DatabaseHelper(config)
-                db_helper.connect()
-                db_helper.init_tables()
+                # Initialize helpers with proper error handling
+                try:
+                    ldap_helper = LDAPHelper(config)
+                    db_helper = DatabaseHelper(config)
+                    db_helper.connect()
+                    db_helper.init_tables()
 
-                ldap_helper.connect_with_stored_credentials()
-                computers = ldap_helper.get_computers(
-                    ldap_filter=scan_config['filter'],
-                    ou=scan_config['ou']
-                )
+                    # Add retry logic for LDAP connection
+                    max_retries = 3
+                    retry_delay = 2
+                    last_error = None
 
-                if not computers:
-                    raise ValueError("No computers found")
+                    for attempt in range(max_retries):
+                        try:
+                            ldap_helper.connect_with_stored_credentials()
+                            break
+                        except Exception as e:
+                            last_error = e
+                            if attempt < max_retries - 1:
+                                logger.warning(f"Attempt {attempt + 1} failed, retrying in {retry_delay} seconds...")
+                                time.sleep(retry_delay)
+                            else:
+                                raise Exception(f"Authentication failed after {max_retries} attempts: {str(e)}")
 
-                session_id = db_helper.start_scan_session(scan_config['domain'])
-                scanner = ShareScanner(config, db_helper, session_id)
+                    # Add debug information
+                    logger.info(f"Debug information:")
+                    logger.info(f"Server IP: {scan_config['dc']}")
+                    logger.info(f"Domain: {scan_config['domain']}")
+                    logger.info(f"Attempted user: {scan_config['username']}")
 
-                def progress_callback(current_host, processed, total):
+                    computers = ldap_helper.get_computers(
+                        ldap_filter=scan_config['filter'],
+                        ou=scan_config['ou']
+                    )
+
+                    if not computers:
+                        raise ValueError("No computers found")
+
+                    session_id = db_helper.start_scan_session(scan_config['domain'])
+                    scanner = ShareScanner(config, db_helper, session_id)
+
+                    def progress_callback(current_host, processed, total):
+                        update_scan_status(scan_id, {
+                            "progress": {
+                                "total_hosts": total,
+                                "processed_hosts": processed,
+                                "current_host": current_host
+                            }
+                        })
+
+                    scanner.set_progress_callback(progress_callback)
+                    scanner.scan_network(computers)
+
                     update_scan_status(scan_id, {
+                        "status": "completed",
                         "progress": {
-                            "total_hosts": total,
-                            "processed_hosts": processed,
-                            "current_host": current_host
+                            "total_hosts": len(computers),
+                            "processed_hosts": len(computers),
+                            "current_host": None
                         }
                     })
 
-                scanner.set_progress_callback(progress_callback)
-                scanner.scan_network(computers)
+                    db_helper.end_scan_session(
+                        session_id,
+                        total_hosts=len(computers),
+                        total_shares=scanner.total_shares_processed,
+                        total_sensitive=scanner.total_sensitive_files
+                    )
 
-                update_scan_status(scan_id, {
-                    "status": "completed",
-                    "progress": {
-                        "total_hosts": len(computers),
-                        "processed_hosts": len(computers),
-                        "current_host": None
-                    }
-                })
-
-                db_helper.end_scan_session(
-                    session_id,
-                    total_hosts=len(computers),
-                    total_shares=scanner.total_shares_processed,
-                    total_sensitive=scanner.total_sensitive_files
-                )
+                except Exception as e:
+                    logger.error(f"Scan error: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    update_scan_status(scan_id, {
+                        "status": "failed",
+                        "error": str(e)
+                    })
+                finally:
+                    try:
+                        db_helper.close()
+                    except:
+                        pass
 
             except Exception as e:
-                print(f"Scan error: {str(e)}")
+                logger.error(f"Outer scan error: {str(e)}")
+                logger.error(traceback.format_exc())
                 update_scan_status(scan_id, {
                     "status": "failed",
                     "error": str(e)
                 })
-            finally:
-                try:
-                    db_helper.close()
-                except:
-                    pass
 
         thread = threading.Thread(target=run_scan_with_status)
         thread.start()
@@ -240,6 +292,8 @@ def start_scan():
         })
 
     except Exception as e:
+        logger.error(f"API error: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "status": "error",
             "error": str(e)
