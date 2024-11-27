@@ -4,29 +4,11 @@ import * as NavigationMenuPrimitive from '@radix-ui/react-navigation-menu';
 import { cva } from 'class-variance-authority';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { logout } from '@/lib/api';
-import { useToast } from '@/hooks/use-toast';
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof NavigationMenuPrimitive.Root>
 >(({ className, children, ...props }, ref) => {
-  const { toast } = useToast();
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-      window.location.reload(); // Reload to reset app state
-    } catch (error) {
-      toast({
-        title: "Logout Failed",
-        description: "Failed to logout. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
     <NavigationMenuPrimitive.Root
       ref={ref}
@@ -79,16 +61,6 @@ const NavigationMenu = React.forwardRef<
           <Link to="/network-map" className={navigationMenuTriggerStyle()}>
             Network Map
           </Link>
-        </NavigationMenuItem>
-
-        <NavigationMenuItem className="ml-auto">
-          <Button 
-            variant="ghost" 
-            onClick={handleLogout}
-            className={navigationMenuTriggerStyle()}
-          >
-            Logout
-          </Button>
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenuPrimitive.Root>

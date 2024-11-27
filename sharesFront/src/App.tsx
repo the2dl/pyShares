@@ -57,10 +57,6 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { subscribeToEvents } from '@/lib/scan-api';
 import { useToast } from '@/hooks/use-toast';
 import { X } from "lucide-react";
-import { SetupWizard } from '@/components/setup-wizard';
-import { LoginForm } from '@/components/login-form';
-import { checkSetupStatus } from '@/lib/api';
-import { LoginPage } from '@/components/auth/login-page';
 
 const router = createBrowserRouter([
   {
@@ -113,64 +109,41 @@ export function App() {
   const [selectedSession, setSelectedSession] = useState<string>('all');
   const { toast } = useToast();
   const [detectionTypes, setDetectionTypes] = useState<string[]>([]);
-  const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-
-  const initializeData = useCallback(async () => {
-    if (!isAuthenticated || !isConfigured) return;
-
-    try {
-      const patterns = await getSensitivePatterns();
-      const types = [...new Set(patterns.map(p => p.type))];
-      setDetectionTypes(types);
-    } catch (error) {
-      console.error('Failed to load detection types:', error);
-    }
-
-    try {
-      const data = await getScanSessions();
-      const completedSessions = data.filter(s => s.scan_status === 'completed');
-      setSessions(completedSessions);
-      
-      if (completedSessions.length > 0) {
-        const latestSession = completedSessions.sort(
-          (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
-        )[0];
-        setSelectedSession(latestSession.id.toString());
-      }
-    } catch (error) {
-      console.error('Failed to fetch sessions:', error);
-    }
-  }, [isAuthenticated, isConfigured]);
 
   useEffect(() => {
-    const init = async () => {
+    const loadDetectionTypes = async () => {
       try {
-        const status = await checkSetupStatus();
-        setIsConfigured(status.isConfigured);
-        
-        if (status.isConfigured) {
-          try {
-            const response = await fetch(`${import.meta.env.VITE_API_URL}/protected`, {
-              credentials: 'include'
-            });
-            setIsAuthenticated(response.ok);
-          } catch (error) {
-            setIsAuthenticated(false);
-          }
-        }
+        const patterns = await getSensitivePatterns();
+        console.log('Loaded patterns:', patterns);
+        const types = [...new Set(patterns.map(p => p.type))];
+        console.log('Unique types:', types);
+        setDetectionTypes(types);
       } catch (error) {
-        console.error('Failed to check app configuration:', error);
-        setIsConfigured(false);
+        console.error('Failed to load detection types:', error);
       }
     };
-    
-    init();
+    loadDetectionTypes();
   }, []);
 
   useEffect(() => {
-    initializeData();
-  }, [initializeData]);
+    const fetchSessions = async () => {
+      try {
+        const data = await getScanSessions();
+        const completedSessions = data.filter(s => s.scan_status === 'completed');
+        setSessions(completedSessions);
+        
+        if (completedSessions.length > 0) {
+          const latestSession = completedSessions.sort(
+            (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+          )[0];
+          setSelectedSession(latestSession.id.toString());
+        }
+      } catch (error) {
+        console.error('Failed to fetch sessions:', error);
+      }
+    };
+    fetchSessions();
+  }, []);
 
   useEffect(() => {
     console.log('Setting up event subscription...');
@@ -232,8 +205,6 @@ export function App() {
   }, [toast]);
 
   const fetchShares = useCallback(async () => {
-    if (!isAuthenticated || !isConfigured) return;
-    
     setLoading(true);
     try {
       const data = await getShares(
@@ -249,7 +220,7 @@ export function App() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, detectionFilter, filterType, filterValue, selectedSession, isAuthenticated, isConfigured]);
+  }, [searchQuery, detectionFilter, filterType, filterValue, selectedSession]);
 
   useEffect(() => {
     fetchShares();
@@ -268,18 +239,6 @@ export function App() {
   };
 
   const filteredShares = shares;  // Filtering is now handled by the API
-
-  if (isConfigured === null) {
-    return <div>Loading...</div>;
-  }
-
-  if (!isConfigured) {
-    return <SetupWizard />;
-  }
-
-  if (!isAuthenticated) {
-    return <LoginForm />;
-  }
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">

@@ -1,4 +1,4 @@
-import express, { Request, Response, RequestHandler, NextFunction } from 'express';
+import express, { Request, Response, RequestHandler } from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import { 
@@ -12,11 +12,6 @@ import {
 
 import dotenv from 'dotenv';
 dotenv.config();
-
-import passport from 'passport';
-import { Strategy as LocalStrategy } from 'passport-local';
-import session from 'express-session';
-import bcrypt from 'bcrypt';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -39,138 +34,11 @@ pool.connect((err, client, release) => {
   release();
 });
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(cors());
 app.use(express.json());
 
-// Session configuration
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
-
-// Initialize passport
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Passport local strategy
-passport.use(new LocalStrategy(async (username, password, done) => {
-  try {
-    const result = await pool.query(
-      'SELECT * FROM users WHERE username = $1',
-      [username]
-    );
-    
-    const user = result.rows[0];
-    
-    if (!user) {
-      return done(null, false, { message: 'Incorrect username.' });
-    }
-    
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    
-    if (!isValid) {
-      return done(null, false, { message: 'Incorrect password.' });
-    }
-    
-    return done(null, user);
-  } catch (err) {
-    return done(err);
-  }
-}));
-
-passport.serializeUser((user: any, done) => {
-  done(null, user.id);
-});
-
-passport.deserializeUser(async (id: number, done) => {
-  try {
-    const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-    done(null, result.rows[0]);
-  } catch (err) {
-    done(err);
-  }
-});
-
-// Check if app is configured
-app.get('/api/app-status', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT is_configured FROM app_settings LIMIT 1');
-    res.json({ isConfigured: result.rows[0].is_configured });
-  } catch (err) {
-    console.error('Failed to fetch app status:', err);
-    res.status(500).json({ error: 'Failed to fetch app status' });
-  }
-});
-
-// Initial setup endpoint
-const handleSetup: RequestHandler = async (req, res) => {
-  try {
-    const { username, password, email } = req.body;
-    
-    const configCheck = await pool.query('SELECT is_configured FROM app_settings LIMIT 1');
-    if (configCheck.rows[0].is_configured) {
-      res.status(400).json({ error: 'App is already configured' });
-      return;
-    }
-    
-    // Create admin user
-    const passwordHash = await bcrypt.hash(password, 10);
-    await pool.query(
-      'INSERT INTO users (username, password_hash, email, is_admin) VALUES ($1, $2, $3, true)',
-      [username, passwordHash, email]
-    );
-    
-    // Update app settings
-    await pool.query('UPDATE app_settings SET is_configured = true');
-    
-    res.json({ success: true });
-    return;
-  } catch (err) {
-    console.error('Setup failed:', err);
-    res.status(500).json({ error: 'Setup failed' });
-    return;
-  }
-};
-
-app.post('/api/setup', handleSetup);
-
-// Login endpoint
-app.post('/api/login', passport.authenticate('local'), (req, res) => {
-  res.json({ user: req.user });
-});
-
-// Logout endpoint
-app.post('/api/logout', (req, res) => {
-  req.logout(() => {
-    res.json({ success: true });
-  });
-});
-
-// Auth check middleware
-const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ error: 'Unauthorized' });
-};
-
-// Protected route example
-app.get('/api/protected', requireAuth, (req, res) => {
-  res.json({ user: req.user });
-});
-
-// Apply requireAuth middleware to existing routes that need protection
-app.get('/api/shares', requireAuth, async (req, res) => {
+// Get all shares with filtering
+app.get('/api/shares', async (req, res) => {
   try {
     const { search, detection_type, filter_type, filter_value, session_id, page, limit } = req.query;
     

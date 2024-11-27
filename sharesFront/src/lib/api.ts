@@ -2,24 +2,6 @@ import type { DetectionType, SensitivePattern } from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// Update the fetch configuration for all API calls
-const fetchWithCredentials = async (url: string, options: RequestInit = {}) => {
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    }
-  });
-  
-  if (!response.ok) {
-    throw new Error('API request failed');
-  }
-  
-  return response;
-};
-
 export async function getShares(
   search?: string, 
   detectionType?: DetectionType,
@@ -56,7 +38,7 @@ export async function getShares(
   }
   
   console.log('Fetching shares with params:', Object.fromEntries(params));
-  const response = await fetchWithCredentials(`${API_BASE}/shares?${params}`);
+  const response = await fetch(`${API_BASE}/shares?${params}`);
   
   if (!response.ok) {
     console.error('Failed to fetch shares:', await response.text());
@@ -465,44 +447,4 @@ export async function exportData(options: ExportOptions): Promise<void> {
   a.click();
   window.URL.revokeObjectURL(url);
   document.body.removeChild(a);
-}
-
-export async function checkSetupStatus(): Promise<{ isConfigured: boolean; authMethod: 'azure_ad' | 'master_key' | null }> {
-  const response = await fetchWithCredentials(`${API_BASE}/app-status`);
-  return response.json();
-}
-
-export async function authenticateWithMasterKey(key: string): Promise<void> {
-  await fetchWithCredentials(`${API_BASE}/auth/master-key`, {
-    method: 'POST',
-    body: JSON.stringify({ key }),
-  });
-}
-
-export async function logout(): Promise<void> {
-  await fetchWithCredentials(`${API_BASE}/logout`, {
-    method: 'POST',
-  });
-}
-
-export async function setupApp(data: { 
-  username: string; 
-  password: string; 
-  email: string; 
-}): Promise<void> {
-  await fetchWithCredentials(`${API_BASE}/setup`, {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function login(credentials: { 
-  username: string; 
-  password: string; 
-}): Promise<{ user: any }> {
-  const response = await fetchWithCredentials(`${API_BASE}/login`, {
-    method: 'POST',
-    body: JSON.stringify(credentials),
-  });
-  return response.json();
 } 
