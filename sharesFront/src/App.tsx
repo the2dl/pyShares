@@ -9,7 +9,7 @@ import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
-import { getShares, getScanSessions, getSensitivePatterns } from '@/lib/api';
+import { getShares, getScanSessions, getSensitivePatterns, logout } from '@/lib/api';
 import {
   Select,
   SelectContent,
@@ -43,9 +43,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { ActivityIcon, Rocket } from "lucide-react";
+import { ActivityIcon, Rocket, LogOut } from "lucide-react";
 import { ScanDiff } from '@/components/dashboard/scan-diff';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { navigationMenuTriggerStyle } from "@/components/ui/navigation-menu"
 import { format } from 'date-fns';
 import { NetworkMap } from '@/components/dashboard/network-map';
@@ -109,6 +109,22 @@ export function App() {
   const [selectedSession, setSelectedSession] = useState<string>('all');
   const { toast } = useToast();
   const [detectionTypes, setDetectionTypes] = useState<string[]>([]);
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      localStorage.removeItem('authToken');
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast({
+        title: "Logout Failed",
+        description: "There was an error logging out. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
 
   useEffect(() => {
     const loadDetectionTypes = async () => {
@@ -281,6 +297,15 @@ export function App() {
             </NavigationMenu>
 
             <div className="flex items-center gap-4">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleLogout}>
+                    <LogOut className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Logout</TooltipContent>
+              </Tooltip>
+
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div>

@@ -271,7 +271,13 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
     if (err) {
       return res.status(500).json({ error: 'Failed to logout' });
     }
-    res.json({ success: true });
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Failed to destroy session' });
+      }
+      res.clearCookie('sessionId');
+      res.json({ success: true });
+    });
   });
 });
 
