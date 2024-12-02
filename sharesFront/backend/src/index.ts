@@ -75,6 +75,7 @@ pool.connect((err, client, release) => {
   release();
 });
 
+// Add CORS configuration before any routes
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
@@ -84,7 +85,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Session configuration
+// FIRST: Add session middleware
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',
   resave: false,
@@ -93,13 +94,13 @@ app.use(session({
     secure: false,
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    maxAge: 24 * 60 * 60 * 1000,
     path: '/'
   },
-  name: 'sessionId' // Add a specific name for the session cookie
+  name: 'sessionId'
 }));
 
-// Initialize Passport
+// SECOND: Initialize Passport
 app.use(passport.initialize());
 app.use(passport.session());
 
@@ -160,6 +161,70 @@ passport.serializeUser((user: User, done) => {
 passport.deserializeUser((user: SafeUser, done) => {
   done(null, user);
 });
+
+// THIRD: Now add the setup endpoints
+app.get('/api/setup/status', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT is_completed FROM setup_status LIMIT 1');
+    res.json({ isCompleted: result.rows[0]?.is_completed || false });
+  } catch (error) {
+    console.error('Failed to check setup status:', error);
+    res.status(500).json({ error: 'Failed to check setup status' });
+  }
+});
+
+app.post('/api/setup', (async (req: Request<{}, any, any, {}>, res: Response) => {
+  const { username, email, password } = req.body;
+  
+  try {
+    // Check if setup is already completed
+    const setupResult = await pool.query(
+      'SELECT is_completed FROM setup_status LIMIT 1'
+    );
+    
+    if (setupResult.rows[0]?.is_completed) {
+      return res.status(403).json({ error: 'Setup already completed' });
+    }
+    
+    // Start transaction
+    await pool.query('BEGIN');
+    
+    // Create admin user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userResult = await pool.query<User>(
+      'INSERT INTO users (username, email, password_hash, is_admin) VALUES ($1, $2, $3, true) RETURNING *',
+      [username, email, hashedPassword]
+    );
+    
+    // Mark setup as completed
+    await pool.query(
+      'INSERT INTO setup_status (is_completed, completed_at) VALUES (true, CURRENT_TIMESTAMP)'
+    );
+    
+    await pool.query('COMMIT');
+
+    // Log the user in
+    const user = userResult.rows[0];
+    req.login(user, (err) => {
+      if (err) {
+        console.error('Login error:', err);
+        return res.status(500).json({ error: 'Failed to login after setup' });
+      }
+      res.json({ 
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin
+        }
+      });
+    });
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    console.error('Setup failed:', error);
+    res.status(500).json({ error: 'Setup failed' });
+  }
+}) as RequestHandler);
 
 // Authentication middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -289,18 +354,6 @@ app.get('/api/auth/status', (req: Request, res: Response) => {
     });
   } else {
     res.json({ isAuthenticated: false, user: null });
-  }
-});
-
-app.get('/api/setup/status', async (req: Request, res: Response) => {
-  try {
-    const result = await pool.query(
-      'SELECT is_completed FROM setup_status LIMIT 1'
-    );
-    res.json({ isCompleted: result.rows[0]?.is_completed || false });
-  } catch (err) {
-    console.error('Failed to get setup status:', err);
-    res.status(500).json({ error: 'Failed to get setup status' });
   }
 });
 
@@ -1454,55 +1507,6 @@ const handleExport: RequestHandler<{}, any, any, ExportQuery> = async (req, res,
 
 // Register the endpoint
 app.get('/api/export', handleExport);
-
-// Add near your other imports
-interface SetupData {
-  username: string;
-  email: string;
-  password: string;
-  domain: string;
-  scanInterval: number;
-}
-
-// Add with your other endpoints
-app.post('/api/setup', async (req: Request, res: Response) => {
-  const { username, email, password, domain, scanInterval }: SetupData = req.body;
-  
-  try {
-    // Start transaction
-    await pool.query('BEGIN');
-    
-    // Create admin user
-    const hashedPassword = await bcrypt.hash(password, 10);
-    await pool.query(
-      'INSERT INTO users (username, email, password_hash, is_admin) VALUES ($1, $2, $3, true)',
-      [username, email, hashedPassword]
-    );
-    
-    // Update setup status
-    await pool.query(
-      'UPDATE setup_status SET is_completed = true, completed_at = NOW(), initial_domain = $1, scan_interval = $2',
-      [domain, scanInterval]
-    );
-    
-    await pool.query('COMMIT');
-    res.json({ success: true });
-  } catch (error) {
-    await pool.query('ROLLBACK');
-    console.error('Setup failed:', error);
-    res.status(500).json({ error: 'Setup failed' });
-  }
-});
-
-app.get('/api/setup/status', async (req: Request, res: Response) => {
-  try {
-    const result = await pool.query('SELECT is_completed FROM setup_status LIMIT 1');
-    res.json({ isCompleted: result.rows[0]?.is_completed || false });
-  } catch (error) {
-    console.error('Failed to check setup status:', error);
-    res.status(500).json({ error: 'Failed to check setup status' });
-  }
-});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

@@ -516,3 +516,22 @@ export async function checkSetupStatus(): Promise<{ isCompleted: boolean }> {
   if (!response.ok) throw new Error('Failed to check setup status');
   return response.json();
 }
+
+export async function setup(data: { 
+  username: string; 
+  email: string; 
+  password: string; 
+}): Promise<{ user: User }> {
+  const response = await fetch(`${API_BASE}/setup`, {
+    ...defaultFetchOptions,
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Setup failed');
+  }
+  
+  return response.json();
+}
