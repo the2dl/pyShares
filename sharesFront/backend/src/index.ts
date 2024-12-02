@@ -1,4 +1,4 @@
-import express, { Request, Response, RequestHandler } from 'express';
+import express, { Request, Response, RequestHandler, NextFunction } from 'express';
 import cors from 'cors';
 import { Pool } from 'pg';
 import { 
@@ -12,6 +12,47 @@ import {
 
 import dotenv from 'dotenv';
 dotenv.config();
+
+import passport from 'passport';
+import { Strategy as LocalStrategy } from 'passport-local';
+import session from 'express-session';
+import bcrypt from 'bcrypt';
+
+// Add these types
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  password_hash?: string;
+  is_admin: boolean;
+}
+
+// Add SafeUser type for responses
+type SafeUser = Omit<User, 'password_hash'>;
+
+// Add this to make TypeScript understand the user property in requests
+declare global {
+  namespace Express {
+    interface User {
+      id: number;
+      username: string;
+      email: string;
+      password_hash?: string;
+      is_admin: boolean;
+    }
+  }
+}
+
+declare module 'express-session' {
+  interface SessionData {
+    user: {
+      id: number;
+      username: string;
+      email: string;
+      is_admin: boolean;
+    };
+  }
+}
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -34,8 +75,231 @@ pool.connect((err, client, release) => {
   release();
 });
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  exposedHeaders: ['Set-Cookie']
+}));
 app.use(express.json());
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/'
+  },
+  name: 'sessionId' // Add a specific name for the session cookie
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Passport configuration
+passport.use(new LocalStrategy(
+  {
+    usernameField: 'username',
+    passwordField: 'password',
+  },
+  async (username: string, password: string, done) => {
+    console.log('LocalStrategy: Attempting authentication for username:', username);
+    try {
+      const result = await pool.query<User>(
+        'SELECT * FROM users WHERE username = $1',
+        [username]
+      );
+
+      const user = result.rows[0];
+      console.log('LocalStrategy: User lookup result:', { userFound: !!user });
+
+      if (!user) {
+        console.log('LocalStrategy: User not found');
+        return done(null, false, { message: 'Invalid username or password' });
+      }
+
+      if (!user.password_hash) {
+        console.log('LocalStrategy: No password hash found');
+        return done(null, false, { message: 'Invalid username or password' });
+      }
+      
+      const isValid = await bcrypt.compare(password, user.password_hash);
+      console.log('LocalStrategy: Password validation:', { isValid });
+
+      if (!isValid) {
+        console.log('LocalStrategy: Invalid password');
+        return done(null, false, { message: 'Invalid username or password' });
+      }
+
+      console.log('LocalStrategy: Authentication successful');
+      return done(null, user);
+    } catch (err) {
+      console.error('LocalStrategy: Error during authentication:', err);
+      return done(err);
+    }
+  }
+));
+
+passport.serializeUser((user: User, done) => {
+  const safeUser = {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    is_admin: user.is_admin
+  };
+  done(null, safeUser);
+});
+
+passport.deserializeUser((user: SafeUser, done) => {
+  done(null, user);
+});
+
+// Authentication middleware
+const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  if (req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ error: 'Unauthorized' });
+};
+
+// Auth routes
+app.post('/api/auth/login', (async (req: Request, res: Response, next: NextFunction) => {
+  console.log('Login attempt received:', {
+    username: req.body.username,
+    timestamp: new Date().toISOString()
+  });
+
+  passport.authenticate('local', (err: Error | null, user: User | false, info: { message: string } | undefined) => {
+    console.log('Passport authenticate result:', {
+      error: err?.message,
+      userFound: !!user,
+      info: info?.message
+    });
+
+    if (err) {
+      console.error('Login error:', err);
+      return next(err);
+    }
+    
+    if (!user) {
+      console.log('Authentication failed:', info?.message);
+      return res.status(401).json({ message: info?.message || 'Invalid credentials' });
+    }
+
+    req.login(user, (loginErr) => {
+      if (loginErr) {
+        console.error('Session creation error:', loginErr);
+        return next(loginErr);
+      }
+      
+      console.log('User logged in successfully:', {
+        userId: user.id,
+        username: user.username
+      });
+
+      const safeUser = {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        is_admin: user.is_admin
+      };
+      
+      req.session.user = safeUser;
+      req.session.save((saveErr) => {
+        if (saveErr) {
+          console.error('Session save error:', saveErr);
+          return next(saveErr);
+        }
+        console.log('Session:', req.session);
+        console.log('User:', req.user);
+        return res.json({ user: safeUser });
+      });
+    });
+  })(req, res, next);
+}) as RequestHandler);
+
+app.post('/api/auth/register', 
+  (async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { username, email, password } = req.body;
+      
+      // Check if setup is completed
+      const setupResult = await pool.query(
+        'SELECT is_completed FROM setup_status LIMIT 1'
+      );
+      
+      const isSetupCompleted = setupResult.rows[0]?.is_completed;
+      
+      // If setup is completed, only allow admin to create new users
+      if (isSetupCompleted && (!req.user || !req.user.is_admin)) {
+        return res.status(403).json({ error: 'Only administrators can create new users' });
+      }
+      
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      const result = await pool.query<User>(
+        `INSERT INTO users (username, email, password_hash, is_admin) 
+         VALUES ($1, $2, $3, $4) 
+         RETURNING *`,
+        [username, email, hashedPassword, !isSetupCompleted] // First user is admin
+      );
+      
+      // If this is the first user, mark setup as completed
+      if (!isSetupCompleted) {
+        await pool.query(
+          `INSERT INTO setup_status (is_completed, completed_at) 
+           VALUES (true, CURRENT_TIMESTAMP)`
+        );
+      }
+      
+      res.json({ user: result.rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  }) as RequestHandler
+);
+
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  req.logout((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Failed to logout' });
+    }
+    res.json({ success: true });
+  });
+});
+
+app.get('/api/auth/status', (req: Request, res: Response) => {
+  if (req.isAuthenticated() && req.user) {
+    res.json({ 
+      isAuthenticated: true, 
+      user: req.user
+    });
+  } else {
+    res.json({ isAuthenticated: false, user: null });
+  }
+});
+
+app.get('/api/setup/status', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      'SELECT is_completed FROM setup_status LIMIT 1'
+    );
+    res.json({ isCompleted: result.rows[0]?.is_completed || false });
+  } catch (err) {
+    console.error('Failed to get setup status:', err);
+    res.status(500).json({ error: 'Failed to get setup status' });
+  }
+});
+
+// Protect all other API routes
+app.use('/api/*', requireAuth);
 
 // Get all shares with filtering
 app.get('/api/shares', async (req, res) => {
@@ -1184,6 +1448,55 @@ const handleExport: RequestHandler<{}, any, any, ExportQuery> = async (req, res,
 
 // Register the endpoint
 app.get('/api/export', handleExport);
+
+// Add near your other imports
+interface SetupData {
+  username: string;
+  email: string;
+  password: string;
+  domain: string;
+  scanInterval: number;
+}
+
+// Add with your other endpoints
+app.post('/api/setup', async (req: Request, res: Response) => {
+  const { username, email, password, domain, scanInterval }: SetupData = req.body;
+  
+  try {
+    // Start transaction
+    await pool.query('BEGIN');
+    
+    // Create admin user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await pool.query(
+      'INSERT INTO users (username, email, password_hash, is_admin) VALUES ($1, $2, $3, true)',
+      [username, email, hashedPassword]
+    );
+    
+    // Update setup status
+    await pool.query(
+      'UPDATE setup_status SET is_completed = true, completed_at = NOW(), initial_domain = $1, scan_interval = $2',
+      [domain, scanInterval]
+    );
+    
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    console.error('Setup failed:', error);
+    res.status(500).json({ error: 'Setup failed' });
+  }
+});
+
+app.get('/api/setup/status', async (req: Request, res: Response) => {
+  try {
+    const result = await pool.query('SELECT is_completed FROM setup_status LIMIT 1');
+    res.json({ isCompleted: result.rows[0]?.is_completed || false });
+  } catch (error) {
+    console.error('Failed to check setup status:', error);
+    res.status(500).json({ error: 'Failed to check setup status' });
+  }
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
