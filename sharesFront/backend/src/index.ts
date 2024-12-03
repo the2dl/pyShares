@@ -15,7 +15,7 @@ dotenv.config();
 
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
-import session from 'express-session';
+import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 
 // Add these types
@@ -43,16 +43,9 @@ declare global {
   }
 }
 
-declare module 'express-session' {
-  interface SessionData {
-    user: {
-      id: number;
-      username: string;
-      email: string;
-      is_admin: boolean;
-    };
-  }
-}
+// Remove session-related imports and add JWT secret
+const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key';
+const JWT_EXPIRES_IN = '24h';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -85,24 +78,8 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// FIRST: Add session middleware
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: false,
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000,
-    path: '/'
-  },
-  name: 'sessionId'
-}));
-
-// SECOND: Initialize Passport
+// Remove session middleware and keep only passport initialization
 app.use(passport.initialize());
-app.use(passport.session());
 
 // Passport configuration
 passport.use(new LocalStrategy(
@@ -148,19 +125,24 @@ passport.use(new LocalStrategy(
   }
 ));
 
-passport.serializeUser((user: User, done) => {
-  const safeUser = {
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    is_admin: user.is_admin
-  };
-  done(null, safeUser);
-});
+// Add JWT authentication middleware
+const requireAuth: RequestHandler = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'No token provided' });
+    return;
+  }
 
-passport.deserializeUser((user: SafeUser, done) => {
-  done(null, user);
-});
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, JWT_SECRET) as User;
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+    return;
+  }
+};
 
 // THIRD: Now add the setup endpoints
 app.get('/api/setup/status', async (req: Request, res: Response) => {
@@ -226,66 +208,38 @@ app.post('/api/setup', (async (req: Request<{}, any, any, {}>, res: Response) =>
   }
 }) as RequestHandler);
 
-// Authentication middleware
-const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ error: 'Unauthorized' });
-};
-
 // Auth routes
 app.post('/api/auth/login', (async (req: Request, res: Response, next: NextFunction) => {
-  console.log('Login attempt received:', {
-    username: req.body.username,
-    timestamp: new Date().toISOString()
-  });
-
-  passport.authenticate('local', (err: Error | null, user: User | false, info: { message: string } | undefined) => {
-    console.log('Passport authenticate result:', {
-      error: err?.message,
-      userFound: !!user,
-      info: info?.message
-    });
-
+  passport.authenticate('local', { session: false }, (err: Error | null, user: User | false, info: { message: string } | undefined) => {
     if (err) {
-      console.error('Login error:', err);
       return next(err);
     }
     
     if (!user) {
-      console.log('Authentication failed:', info?.message);
       return res.status(401).json({ message: info?.message || 'Invalid credentials' });
     }
 
-    req.login(user, (loginErr) => {
-      if (loginErr) {
-        console.error('Session creation error:', loginErr);
-        return next(loginErr);
-      }
-      
-      console.log('User logged in successfully:', {
-        userId: user.id,
-        username: user.username
-      });
-
-      const safeUser = {
+    // Create JWT token
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        username: user.username, 
+        email: user.email, 
+        is_admin: user.is_admin 
+      }, 
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    
+    // Return user info and token
+    res.json({ 
+      user: {
         id: user.id,
         username: user.username,
         email: user.email,
         is_admin: user.is_admin
-      };
-      
-      req.session.user = safeUser;
-      req.session.save((saveErr) => {
-        if (saveErr) {
-          console.error('Session save error:', saveErr);
-          return next(saveErr);
-        }
-        console.log('Session:', req.session);
-        console.log('User:', req.user);
-        return res.json({ user: safeUser });
-      });
+      },
+      token 
     });
   })(req, res, next);
 }) as RequestHandler);
@@ -331,33 +285,18 @@ app.post('/api/auth/register',
   }) as RequestHandler
 );
 
-app.post('/api/auth/logout', (req: Request, res: Response) => {
-  req.logout((err) => {
-    if (err) {
-      return res.status(500).json({ error: 'Failed to logout' });
-    }
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(500).json({ error: 'Failed to destroy session' });
-      }
-      res.clearCookie('sessionId');
-      res.json({ success: true });
-    });
+app.post('/api/auth/logout', (_req, res) => {
+  res.json({ success: true });
+});
+
+app.get('/api/auth/status', requireAuth, (req: Request, res: Response) => {
+  res.json({ 
+    isAuthenticated: true, 
+    user: req.user 
   });
 });
 
-app.get('/api/auth/status', (req: Request, res: Response) => {
-  if (req.isAuthenticated() && req.user) {
-    res.json({ 
-      isAuthenticated: true, 
-      user: req.user
-    });
-  } else {
-    res.json({ isAuthenticated: false, user: null });
-  }
-});
-
-// Protect all other API routes
+// Protect all other API routes with JWT auth
 app.use('/api/*', requireAuth);
 
 // Get all shares with filtering

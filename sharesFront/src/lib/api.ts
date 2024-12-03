@@ -20,11 +20,29 @@ interface RegisterData {
   password: string;
 }
 
+let authToken: string | null = null;
+
+export const setAuthToken = (token: string | null) => {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('authToken', token);
+  } else {
+    localStorage.removeItem('authToken');
+  }
+};
+
 const defaultFetchOptions: RequestInit = {
-  credentials: 'include',
   headers: {
     'Content-Type': 'application/json'
   }
+};
+
+const getAuthHeaders = (): Record<string, string> => {
+  const headers: Record<string, string> = { ...defaultFetchOptions.headers as Record<string, string> };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
 };
 
 export async function getShares(
@@ -63,7 +81,10 @@ export async function getShares(
   }
   
   console.log('Fetching shares with params:', Object.fromEntries(params));
-  const response = await fetch(`${API_BASE}/shares?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     console.error('Failed to fetch shares:', await response.text());
@@ -104,7 +125,10 @@ export async function getSensitiveFiles(
     Object.fromEntries(params.entries())
   );
 
-  const response = await fetch(`${API_BASE}/shares/${shareId}/sensitive-files?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/${shareId}/sensitive-files?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     console.error('Failed to fetch sensitive files:', await response.text());
@@ -128,7 +152,10 @@ interface ShareStats {
 }
 
 export async function getShareStats(): Promise<ShareStats> {
-  const response = await fetch(`${API_BASE}/stats`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/stats`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch stats');
   return response.json();
 }
@@ -151,7 +178,10 @@ export async function getShareDirectories(
     limit: limit.toString()
   });
   
-  const response = await fetch(`${API_BASE}/shares/${shareId}/directories?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/${shareId}/directories?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch directories');
   return response.json();
 }
@@ -162,7 +192,10 @@ export async function getShareDetails(page = 1, limit = 20) {
     limit: limit.toString()
   });
   
-  const response = await fetch(`${API_BASE}/shares/details?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/details?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch share details');
   return response.json();
 }
@@ -173,7 +206,10 @@ export async function getSensitiveFileDetails(page = 1, limit = 20) {
     limit: limit.toString()
   });
   
-  const response = await fetch(`${API_BASE}/sensitive-files/details?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/sensitive-files/details?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch sensitive file details');
   return response.json();
 }
@@ -184,7 +220,10 @@ export async function getHiddenFileStats(page = 1, limit = 20) {
     limit: limit.toString()
   });
   
-  const response = await fetch(`${API_BASE}/shares/hidden-stats?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/hidden-stats?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch hidden file stats');
   return response.json();
 }
@@ -195,7 +234,10 @@ export async function getRecentScans(page = 1, limit = 20) {
     limit: limit.toString()
   });
   
-  const response = await fetch(`${API_BASE}/scans/recent?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/scans/recent?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch recent scans');
   return response.json();
 }
@@ -209,7 +251,10 @@ export async function getActivities(
     limit: limit.toString(),
   });
 
-  const response = await fetch(`${API_BASE}/activities?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/activities?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch activities');
   return response.json();
 }
@@ -239,7 +284,10 @@ export async function getRootFiles(
     Object.fromEntries(params.entries())
   );
 
-  const response = await fetch(`${API_BASE}/shares/${shareId}/root-files?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/${shareId}/root-files?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     console.error('Failed to fetch root files:', await response.text());
@@ -263,7 +311,10 @@ interface TrendData {
 }
 
 export async function getDetectionTrends(): Promise<TrendData[]> {
-  const response = await fetch(`${API_BASE}/trends/detections`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/trends/detections`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     console.error('Failed to fetch detection trends:', await response.text());
@@ -285,7 +336,10 @@ interface ScanSession {
 }
 
 export async function getScanSessions(): Promise<ScanSession[]> {
-  const response = await fetch(`${API_BASE}/scan-sessions`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/scan-sessions`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     console.error('Failed to fetch scan sessions:', await response.text());
@@ -337,7 +391,10 @@ export async function compareScanSessions(
   sessionId2: number
 ): Promise<ScanComparison> {
   const response = await fetch(
-    `${API_BASE}/scan-sessions/compare?session1=${sessionId1}&session2=${sessionId2}`, defaultFetchOptions
+    `${API_BASE}/scan-sessions/compare?session1=${sessionId1}&session2=${sessionId2}`, {
+      ...defaultFetchOptions,
+      headers: getAuthHeaders()
+    }
   );
   
   if (!response.ok) {
@@ -372,7 +429,10 @@ export async function getShareStructure(
     limit: limit.toString(),
   });
 
-  const response = await fetch(`${API_BASE}/shares/${shareId}/structure?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/shares/${shareId}/structure?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to fetch share structure');
   return response.json();
 }
@@ -386,7 +446,10 @@ interface Activity {
 }
 
 export async function postActivity(activity: Activity): Promise<void> {
-  const response = await fetch(`${API_BASE}/activities`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/activities`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
 
   if (!response.ok) {
     throw new Error('Failed to post activity');
@@ -395,7 +458,10 @@ export async function postActivity(activity: Activity): Promise<void> {
 
 export async function getSensitivePatterns(): Promise<SensitivePattern[]> {
   console.log('Fetching patterns from:', `${API_BASE}/settings/sensitive-patterns`);
-  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) {
     console.error('Failed to fetch patterns:', await response.text());
     throw new Error('Failed to fetch sensitive patterns');
@@ -406,7 +472,10 @@ export async function getSensitivePatterns(): Promise<SensitivePattern[]> {
 }
 
 export async function addSensitivePattern(pattern: Pick<SensitivePattern, 'pattern' | 'type' | 'description'>): Promise<SensitivePattern> {
-  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to add sensitive pattern');
   return response.json();
 }
@@ -415,13 +484,19 @@ export async function updateSensitivePattern(
   id: number,
   pattern: Pick<SensitivePattern, 'pattern' | 'type' | 'description' | 'enabled'>
 ): Promise<SensitivePattern> {
-  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to update sensitive pattern');
   return response.json();
 }
 
 export async function deleteSensitivePattern(id: number): Promise<void> {
-  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/settings/sensitive-patterns/${id}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to delete sensitive pattern');
 }
 
@@ -440,7 +515,10 @@ export async function exportData(options: ExportOptions): Promise<void> {
     include_shares: options.includeShares.toString(),
   });
 
-  const response = await fetch(`${API_BASE}/export?${params}`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/export?${params}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) {
     throw new Error('Failed to export data');
@@ -458,10 +536,11 @@ export async function exportData(options: ExportOptions): Promise<void> {
   document.body.removeChild(a);
 }
 
-export async function login(credentials: { username: string; password: string }): Promise<{ user: User }> {
+export async function login(credentials: { username: string; password: string }): Promise<{ user: User; token: string }> {
   const response = await fetch(`${API_BASE}/auth/login`, {
     ...defaultFetchOptions,
     method: 'POST',
+    headers: getAuthHeaders(),
     body: JSON.stringify(credentials)
   });
   
@@ -470,49 +549,63 @@ export async function login(credentials: { username: string; password: string })
     throw new Error(error.message || 'Login failed');
   }
 
-  return response.json();
+  const data = await response.json();
+  setAuthToken(data.token);
+  return data;
 }
 
 export async function register(data: RegisterData): Promise<{ user: User }> {
-  const response = await fetch(`${API_BASE}/auth/register`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   
   if (!response.ok) throw new Error('Registration failed');
   return response.json();
 }
 
 export async function logout(): Promise<void> {
-  const response = await fetch(`${API_BASE}/auth/logout`, {
+  await fetch(`${API_BASE}/auth/logout`, {
     ...defaultFetchOptions,
-    method: 'POST'
+    method: 'POST',
+    headers: getAuthHeaders()
   });
-  
-  if (!response.ok) throw new Error('Logout failed');
+  setAuthToken(null);
 }
 
 export async function checkAuth(): Promise<{ isAuthenticated: boolean; user: User | null }> {
   try {
-    const response = await fetch(`${API_BASE}/auth/status`, defaultFetchOptions);
+    if (!authToken) {
+      return { isAuthenticated: false, user: null };
+    }
+
+    const response = await fetch(`${API_BASE}/auth/status`, {
+      ...defaultFetchOptions,
+      headers: getAuthHeaders()
+    });
     
     if (!response.ok) {
-      console.log('Auth check failed:', response.status);
+      setAuthToken(null);
       return { isAuthenticated: false, user: null };
     }
     
     const data = await response.json();
-    console.log('Auth check response:', data);
-    
     return {
       isAuthenticated: Boolean(data.isAuthenticated),
       user: data.user
     };
   } catch (error) {
     console.error('Auth check error:', error);
+    setAuthToken(null);
     return { isAuthenticated: false, user: null };
   }
 }
 
 export async function checkSetupStatus(): Promise<{ isCompleted: boolean }> {
-  const response = await fetch(`${API_BASE}/setup/status`, defaultFetchOptions);
+  const response = await fetch(`${API_BASE}/setup/status`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
   if (!response.ok) throw new Error('Failed to check setup status');
   return response.json();
 }
@@ -525,6 +618,7 @@ export async function setup(data: {
   const response = await fetch(`${API_BASE}/setup`, {
     ...defaultFetchOptions,
     method: 'POST',
+    headers: getAuthHeaders(),
     body: JSON.stringify(data)
   });
   

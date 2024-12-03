@@ -46,15 +46,27 @@ export function Login() {
     setError('');
     
     try {
-      const result = await login({ username, password });
-      if (result.user) {
-        window.location.href = '/';
+      const { user, token } = await login({ username, password });
+      
+      if (user) {
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${user.username}!`,
+        });
+        
+        navigate('/', { replace: true });
       } else {
         setError('Invalid username or password');
       }
     } catch (error) {
       console.error('Login failed:', error);
       setError(error instanceof Error ? error.message : "An error occurred during login");
+      
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: error instanceof Error ? error.message : "An error occurred during login",
+      });
     } finally {
       setLoading(false);
     }

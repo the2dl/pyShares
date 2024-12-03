@@ -39,17 +39,15 @@ export function AuthProvider() {
           return;
         }
 
-        // Check auth status
+        // Check auth status using JWT
         const { isAuthenticated, user } = await checkAuth();
-        console.log('Auth check result:', { isAuthenticated, user });
         setAuthState({ user, isAuthenticated, loading: false });
 
-        // If not authenticated and not on auth pages, redirect to login
+        // Handle redirects
         const isAuthPage = ['/login', '/register', '/setup'].includes(location.pathname);
         if (!isAuthenticated && !isAuthPage) {
           navigate('/login', { state: { from: location.pathname } });
         } else if (isAuthenticated && isAuthPage && location.pathname !== '/setup') {
-          // If authenticated and on an auth page, redirect to home
           const from = location.state?.from || '/';
           navigate(from);
         }
