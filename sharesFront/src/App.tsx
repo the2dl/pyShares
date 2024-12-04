@@ -58,6 +58,7 @@ import { subscribeToEvents } from '@/lib/scan-api';
 import { useToast } from '@/hooks/use-toast';
 import { X } from "lucide-react";
 import { useAuth } from '@/components/auth/auth-provider';
+import { useDebounce } from '@/lib/hooks/use-debounce';
 
 const router = createBrowserRouter([
   {
@@ -112,6 +113,7 @@ export function App() {
   const [detectionTypes, setDetectionTypes] = useState<string[]>([]);
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const handleLogout = async () => {
     try {
@@ -264,6 +266,14 @@ export function App() {
 
   const filteredShares = shares;  // Filtering is now handled by the API
 
+  useEffect(() => {
+    fetchShares();
+  }, [debouncedSearchQuery, detectionFilter, filterType, filterValue, selectedSession]);
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  };
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <TooltipProvider>
@@ -378,7 +388,7 @@ export function App() {
                         <Input
                           placeholder="Search shares and files..."
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={handleSearch}
                           className="pl-8 w-full"
                         />
                       </div>
