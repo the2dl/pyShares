@@ -159,8 +159,8 @@ app.get('/api/setup/status', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/setup', (async (req: Request<{}, any, any, {}>, res: Response) => {
-  const { username, email, password } = req.body;
+app.post('/api/setup', (async (req: Request, res: Response) => {
+  const { admin, azure } = req.body;
   
   try {
     // Check if setup is already completed
@@ -176,11 +176,31 @@ app.post('/api/setup', (async (req: Request<{}, any, any, {}>, res: Response) =>
     await pool.query('BEGIN');
     
     // Create admin user
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(admin.password, 10);
     const userResult = await pool.query<User>(
       'INSERT INTO users (username, email, password_hash, is_admin) VALUES ($1, $2, $3, true) RETURNING *',
-      [username, email, hashedPassword]
+      [admin.username, admin.email, hashedPassword]
     );
+
+    // If Azure is enabled, save Azure configuration
+    if (azure?.isEnabled) {
+      await pool.query(
+        `INSERT INTO azure_config (
+          client_id, 
+          tenant_id, 
+          client_secret, 
+          redirect_uri, 
+          is_enabled
+        ) VALUES ($1, $2, $3, $4, $5)`,
+        [
+          azure.clientId,
+          azure.tenantId,
+          azure.clientSecret,
+          azure.redirectUri,
+          true
+        ]
+      );
+    }
     
     // Mark setup as completed
     await pool.query(
@@ -189,26 +209,33 @@ app.post('/api/setup', (async (req: Request<{}, any, any, {}>, res: Response) =>
     
     await pool.query('COMMIT');
 
-    // Log the user in
+    // Create JWT token
     const user = userResult.rows[0];
-    req.login(user, (err) => {
-      if (err) {
-        console.error('Login error:', err);
-        return res.status(500).json({ error: 'Failed to login after setup' });
-      }
-      res.json({ 
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          is_admin: user.is_admin
-        }
-      });
+    const token = jwt.sign(
+      { 
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        is_admin: user.is_admin 
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+
+    // Return user info and token
+    res.json({ 
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        is_admin: user.is_admin
+      },
+      token
     });
   } catch (error) {
     await pool.query('ROLLBACK');
     console.error('Setup failed:', error);
-    res.status(500).json({ error: 'Setup failed' });
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Setup failed' });
   }
 }) as RequestHandler);
 

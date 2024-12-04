@@ -620,9 +620,18 @@ export async function checkSetupStatus(): Promise<{ isCompleted: boolean }> {
 }
 
 export async function setup(data: { 
-  username: string; 
-  email: string; 
-  password: string; 
+  admin: {
+    username: string;
+    email: string;
+    password: string;
+  };
+  azure: {
+    clientId: string;
+    tenantId: string;
+    clientSecret: string;
+    redirectUri: string;
+    isEnabled: boolean;
+  };
 }): Promise<{ user: User }> {
   const response = await fetch(`${API_BASE}/setup`, {
     ...defaultFetchOptions,
