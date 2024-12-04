@@ -631,6 +631,7 @@ export async function setup(data: {
     clientSecret: string;
     redirectUri: string;
     isEnabled: boolean;
+    allowedGroups: string;
   };
 }): Promise<{ user: User }> {
   const response = await fetch(`${API_BASE}/setup`, {
@@ -653,6 +654,7 @@ interface AzureConfig {
   clientId?: string;
   tenantId?: string;
   redirectUri?: string;
+  allowedGroups?: string;
 }
 
 export async function getAzureConfig(): Promise<AzureConfig> {

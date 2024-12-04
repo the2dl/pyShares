@@ -34,6 +34,7 @@ interface AzureConfig {
   clientSecret: string;
   redirectUri: string;
   isEnabled: boolean;
+  allowedGroups: string;
 }
 
 const AzureSetupHelp: React.FC = () => (
@@ -104,7 +105,8 @@ export function SetupWizard() {
     tenantId: '',
     clientSecret: '',
     redirectUri: `${import.meta.env.VITE_API_URL}/auth/azure/callback`,
-    isEnabled: false
+    isEnabled: false,
+    allowedGroups: ''
   });
   
   const navigate = useNavigate();
@@ -326,6 +328,16 @@ export function SetupWizard() {
                             value={azureConfig.redirectUri}
                             onChange={(e) => setAzureConfig(prev => ({ ...prev, redirectUri: e.target.value }))}
                             required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="azure-allowedGroups">Allowed Groups (comma-separated)</Label>
+                          <Input
+                            id="azure-allowedGroups"
+                            name="azure-allowedGroups"
+                            placeholder="Enter group names or IDs (e.g., 'IT Support, Admins')"
+                            value={azureConfig.allowedGroups}
+                            onChange={(e) => setAzureConfig(prev => ({ ...prev, allowedGroups: e.target.value }))}
                           />
                         </div>
                       </>

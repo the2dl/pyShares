@@ -1643,6 +1643,7 @@ interface AzureConfig {
   client_secret: string;
   redirect_uri: string;
   is_enabled: boolean;
+  allowed_groups: string;
 }
 
 // Add this after the pool connection test and before the CORS configuration
@@ -1674,19 +1675,43 @@ async function initializeAzureStrategy() {
     validateIssuer: true,
     issuer: `https://login.microsoftonline.com/${azureConfig.tenant_id}/v2.0`,
     passReqToCallback: false,
-    scope: ['user.read']
+    scope: ['user.read', 'GroupMember.Read.All']
   }, async (token: any, done: any) => {
     try {
       // Check if user exists in database
       const result = await pool.query<User>(
-        'SELECT * FROM users WHERE azure_id = $1',
-        [token.oid]
+        'SELECT * FROM users WHERE azure_id = $1 OR email = $2',
+        [token.oid, token.email]
       );
 
       let user = result.rows[0];
 
       if (!user) {
-        // Create new user if they don't exist
+        // Verify user's group membership using Microsoft Graph API
+        const graphResponse = await fetch('https://graph.microsoft.com/v1.0/me/memberOf', {
+          headers: {
+            'Authorization': `Bearer ${token.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!graphResponse.ok) {
+          console.error('Failed to fetch group membership');
+          return done(null, false, { message: 'Failed to verify group membership' });
+        }
+
+        const groups = await graphResponse.json();
+        const allowedGroup = azureConfig.allowed_groups?.split(',').map(g => g.trim());
+        const isInAllowedGroup = groups.value.some((group: any) => 
+          allowedGroup?.includes(group.id) || allowedGroup?.includes(group.displayName)
+        );
+
+        if (!isInAllowedGroup) {
+          console.log('User not in allowed group:', token.email);
+          return done(null, false, { message: 'User not in allowed group' });
+        }
+
+        // Auto-create user account since they're in the allowed group
         const newUserResult = await pool.query<User>(
           `INSERT INTO users (
             username, 
@@ -1697,13 +1722,19 @@ async function initializeAzureStrategy() {
             is_active
           ) VALUES ($1, $2, $3, 'azure', false, true) 
           RETURNING *`,
-          [token.preferred_username || token.email, token.email, token.oid]
+          [
+            token.preferred_username || token.email,
+            token.email,
+            token.oid
+          ]
         );
         user = newUserResult.rows[0];
+        console.log('Created new user account for:', token.email);
       }
 
       return done(null, user, token);
     } catch (err) {
+      console.error('Azure authentication error:', err);
       return done(err);
     }
   });
