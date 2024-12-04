@@ -8,6 +8,7 @@ import { Login } from '@/components/auth/login';
 import { Register } from '@/components/auth/register';
 import { SetupWizard } from '@/components/auth/setup-wizard';
 import { AuthProvider } from '@/components/auth/auth-provider';
+import { ProtectedRoute } from '@/components/auth/protected-route';
 import './index.css';
 
 const router = createBrowserRouter([
@@ -29,15 +30,15 @@ const router = createBrowserRouter([
       },
       {
         path: "",
-        element: <App />,
+        element: <ProtectedRoute><App /></ProtectedRoute>,
       },
       {
         path: "scan-comparison",
-        element: <ScanDiff />,
+        element: <ProtectedRoute><ScanDiff /></ProtectedRoute>,
       },
       {
         path: "network-map",
-        element: <NetworkMap />,
+        element: <ProtectedRoute><NetworkMap /></ProtectedRoute>,
       },
     ],
   },

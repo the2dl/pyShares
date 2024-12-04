@@ -57,6 +57,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { subscribeToEvents } from '@/lib/scan-api';
 import { useToast } from '@/hooks/use-toast';
 import { X } from "lucide-react";
+import { useAuth } from '@/components/auth/auth-provider';
 
 const router = createBrowserRouter([
   {
@@ -110,6 +111,7 @@ export function App() {
   const { toast } = useToast();
   const [detectionTypes, setDetectionTypes] = useState<string[]>([]);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -127,39 +129,49 @@ export function App() {
   };
 
   useEffect(() => {
-    const loadDetectionTypes = async () => {
+    const loadInitialData = async () => {
+      if (!isAuthenticated) return;
+      
       try {
-        const patterns = await getSensitivePatterns();
-        console.log('Loaded patterns:', patterns);
-        const types = [...new Set(patterns.map(p => p.type))];
-        console.log('Unique types:', types);
-        setDetectionTypes(types);
+        await loadDetectionTypes();
+        await fetchSessions();
+        await fetchShares();
       } catch (error) {
-        console.error('Failed to load detection types:', error);
+        console.error('Failed to load initial data:', error);
       }
     };
-    loadDetectionTypes();
-  }, []);
 
-  useEffect(() => {
-    const fetchSessions = async () => {
-      try {
-        const data = await getScanSessions();
-        const completedSessions = data.filter(s => s.scan_status === 'completed');
-        setSessions(completedSessions);
-        
-        if (completedSessions.length > 0) {
-          const latestSession = completedSessions.sort(
-            (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
-          )[0];
-          setSelectedSession(latestSession.id.toString());
-        }
-      } catch (error) {
-        console.error('Failed to fetch sessions:', error);
+    loadInitialData();
+  }, [isAuthenticated]);
+
+  const loadDetectionTypes = async () => {
+    try {
+      const patterns = await getSensitivePatterns();
+      console.log('Loaded patterns:', patterns);
+      const types = [...new Set(patterns.map(p => p.type))];
+      console.log('Unique types:', types);
+      setDetectionTypes(types);
+    } catch (error) {
+      console.error('Failed to load detection types:', error);
+    }
+  };
+
+  const fetchSessions = async () => {
+    try {
+      const data = await getScanSessions();
+      const completedSessions = data.filter(s => s.scan_status === 'completed');
+      setSessions(completedSessions);
+      
+      if (completedSessions.length > 0) {
+        const latestSession = completedSessions.sort(
+          (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+        )[0];
+        setSelectedSession(latestSession.id.toString());
       }
-    };
-    fetchSessions();
-  }, []);
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    }
+  };
 
   useEffect(() => {
     console.log('Setting up event subscription...');
@@ -237,10 +249,6 @@ export function App() {
       setLoading(false);
     }
   }, [searchQuery, detectionFilter, filterType, filterValue, selectedSession]);
-
-  useEffect(() => {
-    fetchShares();
-  }, [fetchShares, detectionFilter, filterType, filterValue, selectedSession]);
 
   const handleRefresh = useCallback(async () => {
     await fetchShares();

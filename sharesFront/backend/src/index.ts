@@ -17,6 +17,7 @@ import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { BearerStrategy } from 'passport-azure-ad';
 
 // Add these types
 interface User {
@@ -66,6 +67,9 @@ pool.connect((err, client, release) => {
   }
   console.log('Successfully connected to database');
   release();
+  
+  // Initialize Azure strategy after database connection is established
+  initializeAzureStrategy().catch(console.error);
 });
 
 // Add CORS configuration before any routes
@@ -296,7 +300,165 @@ app.get('/api/auth/status', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-// Protect all other API routes with JWT auth
+// Add Azure authentication endpoints BEFORE the global protection
+app.get('/api/auth/azure/config', (async (_req: Request, res: Response) => {
+  try {
+    const config = await getAzureConfig();
+    if (!config) {
+      return res.json({ isEnabled: false });
+    }
+    
+    res.json({
+      isEnabled: true,
+      clientId: config.client_id,
+      tenantId: config.tenant_id,
+      redirectUri: config.redirect_uri
+    });
+  } catch (err) {
+    console.error('Failed to fetch Azure config:', err);
+    res.status(500).json({ error: 'Failed to fetch Azure configuration' });
+  }
+}) as RequestHandler);
+
+app.get('/api/auth/azure/callback', 
+  (req, res, next) => {
+    console.log('Azure callback hit:', {
+      query: req.query,
+      headers: req.headers
+    });
+    next();
+  },
+  passport.authenticate('azure-ad-bearer', { 
+    session: false,
+    failureRedirect: process.env.FRONTEND_URL || 'http://localhost:5173/login?error=auth_failed'  // Redirect to frontend with error
+  }),
+  (async (req: Request, res: Response) => {
+    try {
+      const { code } = req.query;
+      
+      if (!code) {
+        return res.status(400).json({ error: 'No authorization code provided' });
+      }
+
+      // Get Azure config
+      const config = await getAzureConfig();
+      if (!config) {
+        return res.status(500).json({ error: 'Azure configuration not found' });
+      }
+
+      // Create JWT token for the authenticated user
+      const user = req.user as User;
+      const token = jwt.sign(
+        { 
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin 
+        }, 
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+      );
+
+      // Redirect to frontend with the token
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      res.redirect(`${frontendUrl}/login?token=${token}`);
+    } catch (err) {
+      console.error('Azure callback failed:', err);
+      res.status(500).json({ error: 'Authentication callback failed' });
+    }
+  }) as RequestHandler
+);
+
+app.post('/api/auth/azure/token', (async (req: Request, res: Response) => {
+  try {
+    const { accessToken } = req.body; // Changed from token to accessToken
+    
+    if (!accessToken) {
+      return res.status(400).json({ error: 'No access token provided' });
+    }
+
+    // Get Azure config
+    const config = await getAzureConfig();
+    if (!config) {
+      return res.status(500).json({ error: 'Azure configuration not found' });
+    }
+
+    try {
+      // Fetch user info from Microsoft Graph API
+      const response = await fetch('https://graph.microsoft.com/v1.0/me', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch user info from Microsoft Graph');
+      }
+
+      const msUserInfo = await response.json();
+      
+      // Find or create user
+      const userResult = await pool.query<User>(
+        'SELECT * FROM users WHERE email = $1',
+        [msUserInfo.mail || msUserInfo.userPrincipalName]
+      );
+      
+      let user = userResult.rows[0];
+      
+      if (!user) {
+        // Create new user
+        const newUserResult = await pool.query<User>(
+          `INSERT INTO users (
+            username, 
+            email, 
+            azure_id,
+            auth_provider,
+            is_admin,
+            is_active
+          ) VALUES ($1, $2, $3, 'azure', false, true) 
+          RETURNING *`,
+          [
+            msUserInfo.displayName || msUserInfo.userPrincipalName,
+            msUserInfo.mail || msUserInfo.userPrincipalName,
+            msUserInfo.id
+          ]
+        );
+        user = newUserResult.rows[0];
+      }
+
+      // Create JWT token
+      const jwtToken = jwt.sign(
+        { 
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin 
+        }, 
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+      );
+
+      res.json({ 
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          is_admin: user.is_admin
+        },
+        token: jwtToken
+      });
+    } catch (error) {
+      console.error('Error validating Azure token:', error);
+      res.status(401).json({ error: 'Invalid Azure token' });
+    }
+  } catch (err) {
+    console.error('Azure token validation failed:', err);
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+}) as RequestHandler);
+
+// AFTER all auth routes, add the global protection
 app.use('/api/*', requireAuth);
 
 // Get all shares with filtering
@@ -1446,6 +1608,82 @@ const handleExport: RequestHandler<{}, any, any, ExportQuery> = async (req, res,
 
 // Register the endpoint
 app.get('/api/export', handleExport);
+
+// Add these types
+interface AzureConfig {
+  client_id: string;
+  tenant_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  is_enabled: boolean;
+}
+
+// Add this after the pool connection test and before the CORS configuration
+// Function to get Azure config from database
+async function getAzureConfig(): Promise<AzureConfig | null> {
+  try {
+    const result = await pool.query<AzureConfig>(
+      'SELECT * FROM azure_config WHERE is_enabled = true LIMIT 1'
+    );
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error('Error fetching Azure config:', err);
+    return null;
+  }
+}
+
+// Initialize Azure AD Bearer Strategy
+async function initializeAzureStrategy() {
+  const azureConfig = await getAzureConfig();
+  
+  if (!azureConfig) {
+    console.warn('Azure AD authentication is not configured');
+    return;
+  }
+
+  const bearerStrategy = new BearerStrategy({
+    identityMetadata: `https://login.microsoftonline.com/${azureConfig.tenant_id}/v2.0/.well-known/openid-configuration`,
+    clientID: azureConfig.client_id,
+    validateIssuer: true,
+    issuer: `https://login.microsoftonline.com/${azureConfig.tenant_id}/v2.0`,
+    passReqToCallback: false,
+    scope: ['user.read']
+  }, async (token: any, done: any) => {
+    try {
+      // Check if user exists in database
+      const result = await pool.query<User>(
+        'SELECT * FROM users WHERE azure_id = $1',
+        [token.oid]
+      );
+
+      let user = result.rows[0];
+
+      if (!user) {
+        // Create new user if they don't exist
+        const newUserResult = await pool.query<User>(
+          `INSERT INTO users (
+            username, 
+            email, 
+            azure_id, 
+            auth_provider,
+            is_admin,
+            is_active
+          ) VALUES ($1, $2, $3, 'azure', false, true) 
+          RETURNING *`,
+          [token.preferred_username || token.email, token.email, token.oid]
+        );
+        user = newUserResult.rows[0];
+      }
+
+      return done(null, user, token);
+    } catch (err) {
+      return done(err);
+    }
+  });
+
+  passport.use('azure-ad-bearer', bearerStrategy);
+  console.log('Azure AD Bearer Strategy initialized successfully');
+}
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

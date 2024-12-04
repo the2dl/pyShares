@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { login, checkSetupStatus } from '@/lib/api';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { login, checkSetupStatus, getAzureConfig, loginWithAzure, handleAzureCallback } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { useToast } from "@/hooks/use-toast";
+import { PublicClientApplication, EventType } from '@azure/msal-browser';
 
 export function Login() {
   const [username, setUsername] = useState('');
@@ -16,7 +17,10 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [setupCompleted, setSetupCompleted] = useState<boolean | null>(null);
+  const [azureConfig, setAzureConfig] = useState<AzureConfig | null>(null);
+  const [msalInstance, setMsalInstance] = useState<PublicClientApplication | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
 
@@ -38,6 +42,39 @@ export function Login() {
       }
     };
     checkSetup();
+  }, []);
+
+  useEffect(() => {
+    // Load Azure configuration
+    const loadAzureConfig = async () => {
+      try {
+        const config = await getAzureConfig();
+        setAzureConfig(config);
+        
+        if (config.isEnabled && config.clientId && config.tenantId) {
+          const msalConfig = {
+            auth: {
+              clientId: config.clientId,
+              authority: `https://login.microsoftonline.com/${config.tenantId}`,
+              redirectUri: window.location.origin,
+              postLogoutRedirectUri: window.location.origin,
+              navigateToLoginRequestUrl: true
+            },
+            cache: {
+              cacheLocation: 'sessionStorage',
+              storeAuthStateInCookie: false
+            }
+          };
+          
+          const msalInstance = new PublicClientApplication(msalConfig);
+          await msalInstance.initialize();
+          setMsalInstance(msalInstance);
+        }
+      } catch (error) {
+        console.error('Failed to load Azure config:', error);
+      }
+    };
+    loadAzureConfig();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,6 +106,49 @@ export function Login() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAzureLogin = async () => {
+    if (!msalInstance) return;
+    
+    try {
+      console.log('Starting Azure login...');
+      const response = await msalInstance.loginPopup({
+        scopes: ['openid', 'profile', 'email', 'User.Read'],
+        prompt: 'select_account'
+      });
+
+      console.log('Azure login response:', response);
+      
+      if (response?.accessToken) {
+        try {
+          console.log('Sending token to backend...');
+          const { user } = await loginWithAzure(response.accessToken);
+          
+          if (user) {
+            toast({
+              title: "Login Successful",
+              description: `Welcome back, ${user.username}!`,
+            });
+            navigate('/', { replace: true });
+          }
+        } catch (error) {
+          console.error('Backend login failed:', error);
+          toast({
+            variant: "destructive",
+            title: "Login Failed",
+            description: "Failed to authenticate with the server",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Azure login failed:', error);
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: error instanceof Error ? error.message : "Failed to login with Microsoft",
+      });
     }
   };
 
@@ -131,6 +211,45 @@ export function Login() {
                 {loading ? 'Signing in...' : 'Sign In'}
               </Button>
             </form>
+            
+            {azureConfig?.isEnabled && (
+              <>
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">
+                      Or continue with
+                    </span>
+                  </div>
+                </div>
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleAzureLogin}
+                >
+                  <svg
+                    className="mr-2 h-4 w-4"
+                    aria-hidden="true"
+                    focusable="false"
+                    data-prefix="fab"
+                    data-icon="microsoft"
+                    role="img"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 448 448"
+                  >
+                    <path
+                      fill="currentColor"
+                      d="M0 32h214.6v214.6H0V32zm233.4 0H448v214.6H233.4V32zM0 265.4h214.6V480H0V265.4zm233.4 0H448V480H233.4V265.4z"
+                    />
+                  </svg>
+                  Sign in with Microsoft
+                </Button>
+              </>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col space-y-4">
             <div className="text-sm text-muted-foreground text-center">

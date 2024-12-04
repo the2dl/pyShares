@@ -37,10 +37,19 @@ const defaultFetchOptions: RequestInit = {
   }
 };
 
+export const getStoredToken = () => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    setAuthToken(token);
+  }
+  return token;
+};
+
 const getAuthHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = { ...defaultFetchOptions.headers as Record<string, string> };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
+  const token = authToken || getStoredToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 };
@@ -628,4 +637,55 @@ export async function setup(data: {
   }
   
   return response.json();
+}
+
+interface AzureConfig {
+  isEnabled: boolean;
+  clientId?: string;
+  tenantId?: string;
+  redirectUri?: string;
+}
+
+export async function getAzureConfig(): Promise<AzureConfig> {
+  const response = await fetch(`${API_BASE}/auth/azure/config`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
+  if (!response.ok) throw new Error('Failed to fetch Azure configuration');
+  return response.json();
+}
+
+export const loginWithAzure = async (accessToken: string) => {
+  const response = await fetch(`${API_BASE}/auth/azure/token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accessToken })
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Azure login failed');
+  }
+
+  const data = await response.json();
+  setAuthToken(data.token);
+  return data;
+};
+
+export async function handleAzureCallback(code: string): Promise<{ user: User; token: string }> {
+  const response = await fetch(`${API_BASE}/auth/azure/callback?code=${code}`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Azure authentication failed');
+  }
+
+  const data = await response.json();
+  setAuthToken(data.token);
+  return data;
 }
