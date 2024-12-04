@@ -196,9 +196,20 @@ export function StatsDetailsDialog({
     );
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      if (shareDetailsOpen) {
+        setShareDetailsOpen(false);
+      }
+      onClose();
+    }
+  };
+
   const fetchShareDetails = async (hostname: string, shareName: string) => {
     setLoadingShare(true);
     try {
+      onClose();
+      
       const shares = await getShares(
         undefined,
         undefined,
@@ -601,18 +612,21 @@ export function StatsDetailsDialog({
   const dialogContent = getDialogContent();
 
   return (
-    <Dialog open={activeStat !== null} onOpenChange={() => onClose()}>
-      {dialogContent && (
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>{dialogContent.title}</DialogTitle>
-            <DialogDescription>{dialogContent.description}</DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[60vh]">
-            <div className="p-4">{dialogContent.content}</div>
-          </ScrollArea>
-        </DialogContent>
-      )}
+    <>
+      <Dialog open={activeStat !== null} onOpenChange={handleOpenChange}>
+        {dialogContent && (
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>{dialogContent.title}</DialogTitle>
+              <DialogDescription>{dialogContent.description}</DialogDescription>
+            </DialogHeader>
+            <ScrollArea className="max-h-[60vh]">
+              <div className="p-4">{dialogContent.content}</div>
+            </ScrollArea>
+          </DialogContent>
+        )}
+      </Dialog>
+      
       <ShareDetails
         share={selectedShare}
         open={shareDetailsOpen}
@@ -620,6 +634,6 @@ export function StatsDetailsDialog({
         searchQuery=""
         detectionFilter="all"
       />
-    </Dialog>
+    </>
   );
 }

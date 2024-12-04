@@ -1042,10 +1042,70 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium">Sensitive Patterns</h3>
               <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
             </div>
-            {/* Patterns table will go here */}
+            
+            {/* Add the patterns table */}
+            <div className="border rounded-md">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pattern</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {patterns.map((pattern) => (
+                    <TableRow key={pattern.id}>
+                      <TableCell className="font-mono">{pattern.pattern}</TableCell>
+                      <TableCell>{pattern.type}</TableCell>
+                      <TableCell>{pattern.description}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={pattern.enabled}
+                          onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPattern(pattern)}
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <AlertTriangle className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete this pattern? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
 
           <DialogFooter>

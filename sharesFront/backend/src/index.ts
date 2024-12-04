@@ -499,13 +499,14 @@ app.get('/api/shares', async (req, res) => {
     // If session_id is provided, add it as first parameter
     if (session_id && session_id !== 'all') {
       params.push(session_id);
+      paramIndex++;
     }
 
     // Add filter conditions
     let filterCondition = '';
     if (filter_type && filter_type !== 'all' && filter_value) {
       params.push(`%${filter_value}%`);
-      filterCondition = `AND s.${filter_type} ILIKE $${++paramIndex}`;
+      filterCondition = `AND ${filter_type}::text ILIKE $${paramIndex++}`;  // Note the ::text cast
     }
 
     let query = `
@@ -529,7 +530,7 @@ app.get('/api/shares', async (req, res) => {
           sf.id as file_id
         FROM sensitive_files sf
         ${detection_type && detection_type !== 'all' 
-          ? `WHERE sf.detection_type = $${++paramIndex}` 
+          ? `WHERE sf.detection_type = $${paramIndex}` 
           : ''}
       )
       SELECT 
@@ -541,7 +542,7 @@ app.get('/api/shares', async (req, res) => {
       ${filterCondition}
       ${search ? `
         AND (
-          s.hostname ILIKE $${++paramIndex}
+          s.hostname ILIKE $${paramIndex}
           OR s.share_name ILIKE $${paramIndex}
           OR EXISTS (
             SELECT 1 
