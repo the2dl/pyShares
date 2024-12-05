@@ -1463,6 +1463,52 @@ app.delete('/api/settings/sensitive-patterns/:id', async (req, res) => {
   }
 });
 
+// Add after other endpoints
+// Get stored credentials
+app.get('/api/settings/credentials', requireAuth, async (req, res) => {
+  try {
+    const query = `
+      SELECT id, domain, username, dc_ip, description, created_at, updated_at
+      FROM stored_credentials
+      ORDER BY domain, username
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    console.error('Failed to fetch stored credentials:', err);
+    res.status(500).json({ error: 'Failed to fetch stored credentials' });
+  }
+});
+
+// Add new credential
+app.post('/api/settings/credentials', requireAuth, async (req, res) => {
+  try {
+    const { domain, username, dc_ip, description } = req.body;
+    const query = `
+      INSERT INTO stored_credentials (domain, username, dc_ip, description)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, domain, username, dc_ip, description, created_at, updated_at
+    `;
+    const result = await pool.query(query, [domain, username, dc_ip, description]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Failed to add credential:', err);
+    res.status(500).json({ error: 'Failed to add credential' });
+  }
+});
+
+// Delete credential
+app.delete('/api/settings/credentials/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM stored_credentials WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete credential:', err);
+    res.status(500).json({ error: 'Failed to delete credential' });
+  }
+});
+
 // Add these imports at the top if not already present
 import { createWriteStream, createReadStream } from 'fs';
 import { join } from 'path';

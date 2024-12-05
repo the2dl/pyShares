@@ -700,3 +700,42 @@ export async function handleAzureCallback(code: string): Promise<{ user: User; t
   setAuthToken(data.token);
   return data;
 }
+
+interface StoredCredential {
+  id: number;
+  domain: string;
+  username: string;
+  dc_ip: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getStoredCredentials(): Promise<StoredCredential[]> {
+  const response = await fetch(`${API_BASE}/settings/credentials`, {
+    ...defaultFetchOptions,
+    headers: getAuthHeaders()
+  });
+  if (!response.ok) throw new Error('Failed to fetch stored credentials');
+  return response.json();
+}
+
+export async function addStoredCredential(credential: Pick<StoredCredential, 'domain' | 'username' | 'dc_ip' | 'description'>): Promise<StoredCredential> {
+  const response = await fetch(`${API_BASE}/settings/credentials`, {
+    ...defaultFetchOptions,
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(credential)
+  });
+  if (!response.ok) throw new Error('Failed to add credential');
+  return response.json();
+}
+
+export async function deleteStoredCredential(id: number): Promise<void> {
+  const response = await fetch(`${API_BASE}/settings/credentials/${id}`, {
+    ...defaultFetchOptions,
+    method: 'DELETE',
+    headers: getAuthHeaders()
+  });
+  if (!response.ok) throw new Error('Failed to delete credential');
+}

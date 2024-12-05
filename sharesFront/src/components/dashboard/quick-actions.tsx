@@ -55,6 +55,8 @@ import { getScanSessions } from '@/lib/api';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Info } from 'lucide-react';
+import { getStoredCredentials, addStoredCredential, deleteStoredCredential } from '@/lib/api';
+import { Trash2 } from 'lucide-react';
 
 interface QuickActionsProps {
   onActionComplete?: () => void;
@@ -142,6 +144,14 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
   const [sessions, setSessions] = useState<ScanSession[]>([]);
   const [editingPattern, setEditingPattern] = useState<SensitivePattern | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [storedCredentials, setStoredCredentials] = useState<StoredCredential[]>([]);
+  const [isAddingCredential, setIsAddingCredential] = useState(false);
+  const [newCredential, setNewCredential] = useState({
+    domain: '',
+    username: '',
+    dc_ip: '',
+    description: ''
+  });
 
   const actions = [
     {
@@ -523,6 +533,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
   useEffect(() => {
     if (isSettingsOpen) {
       loadPatterns();
+      loadStoredCredentials();
     }
   }, [isSettingsOpen]);
 
@@ -559,6 +570,60 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
       toast({
         title: "Error",
         description: "Failed to update pattern",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadStoredCredentials = async () => {
+    try {
+      const data = await getStoredCredentials();
+      setStoredCredentials(data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load stored credentials",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddCredential = async () => {
+    try {
+      const result = await addStoredCredential({
+        domain: newCredential.domain,
+        username: newCredential.username,
+        dc_ip: newCredential.dc_ip,
+        description: newCredential.description
+      });
+      setStoredCredentials(prev => [...prev, result]);
+      setIsAddingCredential(false);
+      setNewCredential({ domain: '', username: '', dc_ip: '', description: '' });
+      toast({
+        title: "Success",
+        description: "Credential added successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add credential",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteCredential = async (id: number) => {
+    try {
+      await deleteStoredCredential(id);
+      setStoredCredentials(storedCredentials.filter(cred => cred.id !== id));
+      toast({
+        title: "Success",
+        description: "Credential deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete credential",
         variant: "destructive",
       });
     }
@@ -609,6 +674,75 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
 
             <TabsContent value="basic" className="space-y-4">
               <div className="grid gap-4">
+                {storedCredentials.length > 0 ? (
+                  <>
+                    <div className="grid gap-2">
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="storedCred">Stored Credential</Label>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => setIsSettingsOpen(true)}
+                        >
+                          Manage Credentials
+                        </Button>
+                      </div>
+                      <Select
+                        onValueChange={(value) => {
+                          const selected = storedCredentials.find(cred => cred.id.toString() === value);
+                          if (selected) {
+                            setCredentials(prev => ({
+                              ...prev,
+                              domain: selected.domain,
+                              username: selected.username,
+                              dc: selected.dc_ip
+                            }));
+                          }
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select stored credential" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {storedCredentials.map((cred) => (
+                            <SelectItem key={cred.id} value={cred.id.toString()}>
+                              {cred.description || `${cred.domain}\\${cred.username}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">
+                          Or enter credentials manually
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>No Stored Credentials</AlertTitle>
+                    <AlertDescription>
+                      You can store frequently used credentials in{" "}
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto font-normal" 
+                        onClick={() => setIsSettingsOpen(true)}
+                      >
+                        Settings → Stored Credentials
+                      </Button>
+                      {" "}for quick access.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <div className="grid gap-2">
                   <Label htmlFor="dc">Domain Controller IP</Label>
                   <Input
@@ -1073,72 +1207,137 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             <DialogDescription>Configure scan and detection settings</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Sensitive Patterns</h3>
-              <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
-            </div>
-            
-            {/* Add the patterns table */}
-            <div className="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Pattern</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {patterns.map((pattern) => (
-                    <TableRow key={pattern.id}>
-                      <TableCell className="font-mono">{pattern.pattern}</TableCell>
-                      <TableCell>{pattern.type}</TableCell>
-                      <TableCell>{pattern.description}</TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={pattern.enabled}
-                          onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingPattern(pattern)}
-                        >
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <AlertTriangle className="h-4 w-4 text-destructive" />
+          <Tabs defaultValue="patterns">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="patterns">Sensitive Patterns</TabsTrigger>
+              <TabsTrigger value="credentials">Stored Credentials</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="patterns">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium">Sensitive Patterns</h3>
+                  <Button onClick={() => setIsAddingPattern(true)}>Add Pattern</Button>
+                </div>
+                
+                {/* Add the patterns table */}
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Pattern</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {patterns.map((pattern) => (
+                        <TableRow key={pattern.id}>
+                          <TableCell className="font-mono">{pattern.pattern}</TableCell>
+                          <TableCell>{pattern.type}</TableCell>
+                          <TableCell>{pattern.description}</TableCell>
+                          <TableCell>
+                            <Switch
+                              checked={pattern.enabled}
+                              onCheckedChange={() => handleTogglePattern(pattern.id, pattern.enabled)}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingPattern(pattern)}
+                            >
+                              <Settings className="h-4 w-4" />
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete this pattern? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Pattern</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this pattern? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeletePattern(pattern.id)}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="credentials">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium">Stored Credentials</h3>
+                  <Button onClick={() => setIsAddingCredential(true)}>Add Credential</Button>
+                </div>
+
+                <div className="border rounded-md">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Domain</TableHead>
+                        <TableHead>Username</TableHead>
+                        <TableHead>DC IP</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {storedCredentials.map((cred) => (
+                        <TableRow key={cred.id}>
+                          <TableCell>{cred.domain}</TableCell>
+                          <TableCell>{cred.username}</TableCell>
+                          <TableCell>{cred.dc_ip}</TableCell>
+                          <TableCell>{cred.description}</TableCell>
+                          <TableCell className="text-right">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Credential</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this credential? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteCredential(cred.id)}>
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>Close</Button>
@@ -1345,6 +1544,59 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             >
               Export
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddingCredential} onOpenChange={setIsAddingCredential}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Credential</DialogTitle>
+            <DialogDescription>
+              Store domain and username for quick access during scans
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Domain</Label>
+              <Input
+                value={newCredential.domain}
+                onChange={(e) => setNewCredential({ ...newCredential, domain: e.target.value })}
+                placeholder="company.local"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Domain Controller IP</Label>
+              <Input
+                value={newCredential.dc_ip}
+                onChange={(e) => setNewCredential({ ...newCredential, dc_ip: e.target.value })}
+                placeholder="192.168.1.100"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Username</Label>
+              <Input
+                value={newCredential.username}
+                onChange={(e) => setNewCredential({ ...newCredential, username: e.target.value })}
+                placeholder="domain\username"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Input
+                value={newCredential.description}
+                onChange={(e) => setNewCredential({ ...newCredential, description: e.target.value })}
+                placeholder="Scanner account"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddingCredential(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddCredential}>Add Credential</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
