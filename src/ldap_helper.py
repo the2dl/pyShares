@@ -184,9 +184,18 @@ class LDAPHelper:
     def get_computers(self, ldap_filter: str = "all", ou: Optional[str] = None) -> List[str]:
         """Get computer list with pagination and timeout protection"""
         try:
-            base_dn = self.get_base_dn()
+            # Determine base DN
             if ou:
-                base_dn = f"{ou},{base_dn}"
+                # Check if OU already includes domain components
+                if 'DC=' in ou.upper():
+                    base_dn = ou
+                else:
+                    # Add OU prefix if not already present
+                    if not ou.upper().startswith('OU='):
+                        ou = f"OU={ou}"
+                    base_dn = f"{ou},{self.get_base_dn()}"
+            else:
+                base_dn = self.get_base_dn()
 
             print(f"\nUsing base DN: {base_dn}")
             search_filter = "(objectClass=computer)"
