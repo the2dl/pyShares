@@ -198,16 +198,23 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
         setScanStatus(status);
         
         if (status.status === 'completed') {
+          const hasShares = status.results?.total_shares > 0;
+          const totalHosts = status.results?.total_hosts || 0;
+          
           toast({
             title: "Scan Completed",
-            description: "Network scan has finished successfully",
+            description: hasShares 
+              ? `Found ${status.results.total_shares} shares across ${totalHosts} hosts`
+              : `Scan completed but no accessible shares were found across ${totalHosts} hosts`,
             duration: Infinity,
             variant: "default"
           });
 
           if (Notification.permission === 'granted') {
             new Notification('Scan Completed', {
-              body: 'Network scan has finished successfully',
+              body: hasShares 
+                ? `Found ${status.results.total_shares} shares across ${totalHosts} hosts`
+                : `Scan completed but no accessible shares were found across ${totalHosts} hosts`,
               icon: '/path-to-your-icon.png'
             });
           }
@@ -330,7 +337,22 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
               <CheckCircle2 className="h-4 w-4" />
               <AlertTitle>Scan Completed</AlertTitle>
               <AlertDescription>
-                Network scan has finished successfully
+                {scanStatus.results?.total_shares > 0 ? (
+                  <div className="space-y-2">
+                    <p>Found {scanStatus.results.total_shares} shares across {scanStatus.results.total_hosts} hosts</p>
+                    {scanStatus.results.total_sensitive > 0 && (
+                      <p className="text-yellow-600">
+                        Found {scanStatus.results.total_sensitive} potentially sensitive files
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p>Scan completed but no accessible shares were found{' '}
+                    {scanStatus.results?.total_hosts ? 
+                      `across ${scanStatus.results.total_hosts} hosts` : 
+                      ''}
+                  </p>
+                )}
               </AlertDescription>
             </>
           )}
@@ -770,7 +792,11 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                         <div className="space-y-2">
                           <h4 className="font-medium">Organizational Unit</h4>
                           <p className="text-sm text-muted-foreground">
-                            Specific OU to scan. Optional - leave empty to scan entire domain
+                            Specific OU to scan. Leave empty to scan entire domain.
+                            Example format: "OU=Computers,DC=domain,DC=com"
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            You can also use just the OU name: "Computers"
                           </p>
                         </div>
                       </HoverCardContent>
@@ -796,8 +822,14 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
                         <div className="space-y-2">
                           <h4 className="font-medium">LDAP Filter</h4>
                           <p className="text-sm text-muted-foreground">
-                            LDAP filter for computer search. Default: all
+                            LDAP filter to refine computer search. Examples:
                           </p>
+                          <ul className="text-sm text-muted-foreground list-disc pl-4 mt-1">
+                            <li>(operatingSystem=*Server*) - Only servers</li>
+                            <li>(name=WEB*) - Names starting with "WEB"</li>
+                            <li>(|(name=WEB*)(name=APP*)) - Names starting with WEB or APP</li>
+                            <li>(&(name=WEB*)(operatingSystem=*2019*)) - Web servers running 2019</li>
+                          </ul>
                         </div>
                       </HoverCardContent>
                     </HoverCard>

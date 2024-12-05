@@ -197,8 +197,14 @@ class LDAPHelper:
             else:
                 base_dn = self.get_base_dn()
 
+            # Construct the LDAP filter
+            if ldap_filter == "all":
+                search_filter = "(objectClass=computer)"
+            else:
+                # Combine the custom filter with objectClass filter
+                search_filter = f"(&(objectClass=computer){ldap_filter})"
+
             print(f"\nUsing base DN: {base_dn}")
-            search_filter = "(objectClass=computer)"
             print(f"Using search filter: {search_filter}")
 
             entry_list = []
