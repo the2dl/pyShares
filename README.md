@@ -20,8 +20,29 @@ The platform utilizes various chunks of [impacket](https://github.com/fortra/imp
 - PostgreSQL database storage for results
 - Rich CLI interface with detailed reporting
 - CSV export capabilities
+- Vite/React frontend for easy access to results, scheduled scans, etc.
 
-![Sensitive Files Report](img/sensitive_files_report.png)
+# Screenshots
+
+### Dashboard
+
+![Dashboard](img/dashboard.png)
+
+### Details
+
+![Details](img/details.png)
+
+### Diff
+
+![Diff](img/diff.png)
+
+### Scan Settings
+
+![Scan Settings](img/scan_settings.png)
+
+### Map
+
+![Map](img/map.png)
 
 ## Prerequisites
 
