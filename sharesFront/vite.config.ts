@@ -21,9 +21,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: process.env.BACKEND_URL || 'http://backend:3001',
+        target: process.env.VITE_API_URL || 'http://backend:3001',
         changeOrigin: true,
-      },
+      }
     },
     host: '0.0.0.0',
     strictPort: false,

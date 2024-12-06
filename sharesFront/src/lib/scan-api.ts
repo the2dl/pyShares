@@ -1,4 +1,4 @@
-const SCAN_API_BASE = import.meta.env.VITE_SCAN_API_URL || 'http://localhost:5000/api';
+const SCAN_API_BASE = '/scanner-api';
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 2000; // 2 seconds
 

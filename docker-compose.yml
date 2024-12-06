@@ -33,6 +33,25 @@ services:
     networks:
       - app-network
 
+  scanner:  # This is the Python backend
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./src:/app
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
   frontend:
     build:
       context: ./sharesFront
@@ -42,8 +61,10 @@ services:
     environment:
       - VITE_API_URL=/api
       - BACKEND_URL=http://backend:3001
+      - VITE_SCANNER_API_URL=/scanner-api
     depends_on:
       - backend
+      - scanner
     command: >
       /bin/sh -c "
         sleep 20 &&
