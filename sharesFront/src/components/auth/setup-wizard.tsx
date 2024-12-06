@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { HelpCircle } from "lucide-react";
+import { Logo } from '@/components/ui/logo';
 
 interface SetupData {
   username: string;
@@ -185,11 +186,33 @@ export function SetupWizard() {
         <div className="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[450px]">
           <Card>
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-semibold tracking-tight text-center">
-                Welcome to FileShare Scanner
-              </CardTitle>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <svg
+                  className="h-6 w-6"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5zm0 2.18l7 3.82v5c0 4.52-3.15 8.72-7 9.82-3.85-1.1-7-5.3-7-9.82V8l7-3.82z"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 7L8 11l4 4 4-4-4-4z"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <CardTitle className="text-2xl font-semibold tracking-tight text-center">
+                  ShareSentry
+                </CardTitle>
+              </div>
               <CardDescription className="text-center">
-                Let's set up your admin account
+                Let's set up your ShareSentry admin account
               </CardDescription>
             </CardHeader>
 
