@@ -317,15 +317,6 @@ export function App() {
             <div className="flex items-center gap-4">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={handleLogout}>
-                    <LogOut className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Logout</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
                   <div>
                     <Sheet open={quickActionsOpen} onOpenChange={setQuickActionsOpen}>
                       <SheetTrigger asChild>
@@ -366,6 +357,14 @@ export function App() {
                 <TooltipContent>View Recent Activity</TooltipContent>
               </Tooltip>
               <ThemeToggle />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={handleLogout}>
+                    <LogOut className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Logout</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </nav>
