@@ -68,6 +68,22 @@ pool.connect((err, client, release) => {
   console.log('Successfully connected to database');
   release();
   
+  // Initialize setup status and Azure strategy
+  (async () => {
+    try {
+      const result = await pool.query('SELECT COUNT(*) FROM setup_status');
+      if (parseInt(result.rows[0].count) === 0) {
+        await pool.query(`
+          INSERT INTO setup_status (is_completed, completed_at, created_at) 
+          VALUES (false, NULL, CURRENT_TIMESTAMP)
+        `);
+        console.log('Initialized setup_status table');
+      }
+    } catch (error) {
+      console.error('Failed to initialize setup_status:', error);
+    }
+  })();
+  
   // Initialize Azure strategy after database connection is established
   initializeAzureStrategy().catch(console.error);
 });
@@ -924,6 +940,12 @@ app.get('/api/shares/hidden-stats', async (req, res) => {
     console.error('Failed to fetch hidden file stats:', err);
     res.status(500).json({ error: 'Failed to fetch hidden file stats' });
   }
+});
+
+// Healthcheck
+
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
 });
 
 // Get recent scan information with pagination
@@ -1789,6 +1811,10 @@ async function initializeAzureStrategy() {
   passport.use('azure-ad-bearer', bearerStrategy);
   console.log('Azure AD Bearer Strategy initialized successfully');
 }
+
+app.get('/api/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);

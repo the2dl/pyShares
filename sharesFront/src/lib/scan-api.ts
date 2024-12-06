@@ -30,6 +30,13 @@ interface ScanStatus {
     total_hosts?: number;
     processed_hosts?: number;
     current_host?: string;
+    total_shares?: number;
+    total_sensitive?: number;
+  };
+  results?: {
+    total_shares: number;
+    total_hosts: number;
+    total_sensitive: number;
   };
   error?: string;
 }

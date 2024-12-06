@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-17-data:/var/lib/postgresql/data
+      - ./sharesFront/backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./sharesFront/backend
+      dockerfile: Dockerfile
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - PORT=3001
+      - FRONTEND_URL=http://localhost
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET}
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./sharesFront
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=/api
+      - BACKEND_URL=http://backend:3001
+    depends_on:
+      - backend
+    command: >
+      /bin/sh -c "
+        sleep 20 &&
+        nginx -g 'daemon off;'
+      "
+    networks:
+      - app-network
+
+volumes:
+  postgres-17-data:
+
+networks:
+  app-network:
+    driver: bridge

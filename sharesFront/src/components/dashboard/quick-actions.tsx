@@ -70,6 +70,8 @@ export const scanStatusAtom = atom<{
     total_hosts?: number;
     processed_hosts?: number;
     current_host?: string;
+    total_shares?: number;
+    total_sensitive?: number;
   };
   error?: string;
 } | null>(null);
@@ -92,6 +94,29 @@ interface ScanSession {
   total_shares: number;
   total_sensitive_files: number;
   scan_status: 'running' | 'completed' | 'failed';
+}
+
+interface ScheduledJob {
+  id: string;
+  name: string;
+  trigger: string;
+  trigger_type: string;
+  schedule_config: {
+    day_of_week: string;
+    hour: number;
+    minute: number;
+  };
+  next_run?: string;
+}
+
+interface StoredCredential {
+  id: number;
+  domain: string;
+  username: string;
+  dc_ip: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export function QuickActions({ onActionComplete }: QuickActionsProps) {
@@ -204,17 +229,17 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
     let cleanup: (() => void) | undefined;
 
     if (activeScanId) {
-      cleanup = pollScanStatus(activeScanId, (status) => {
+      pollScanStatus(activeScanId, (status) => {
         setScanStatus(status);
         
         if (status.status === 'completed') {
-          const hasShares = status.results?.total_shares > 0;
-          const totalHosts = status.results?.total_hosts || 0;
+          const hasShares = (status.progress?.total_shares || 0) > 0;
+          const totalHosts = status.progress?.total_hosts || 0;
           
           toast({
             title: "Scan Completed",
             description: hasShares 
-              ? `Found ${status.results.total_shares} shares across ${totalHosts} hosts`
+              ? `Found ${status.progress?.total_shares || 0} shares across ${totalHosts} hosts`
               : `Scan completed but no accessible shares were found across ${totalHosts} hosts`,
             duration: Infinity,
             variant: "default"
@@ -223,7 +248,7 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
           if (Notification.permission === 'granted') {
             new Notification('Scan Completed', {
               body: hasShares 
-                ? `Found ${status.results.total_shares} shares across ${totalHosts} hosts`
+                ? `Found ${status.progress?.total_shares || 0} shares across ${totalHosts} hosts`
                 : `Scan completed but no accessible shares were found across ${totalHosts} hosts`,
               icon: '/path-to-your-icon.png'
             });
@@ -243,6 +268,8 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             });
           }
         }
+      }).then(cleanupFn => {
+        cleanup = cleanupFn;
       });
     }
 
@@ -335,10 +362,14 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
               <AlertTitle>Scan in Progress</AlertTitle>
-              <AlertDescription>
+              <AlertDescription className="space-y-2">
                 {scanStatus.progress?.current_host && (
                   <div>Currently scanning: {scanStatus.progress.current_host}</div>
                 )}
+                <div className="text-sm text-muted-foreground mt-2">
+                  You can close this panel and the scan will continue in the background. 
+                  You'll be notified when it completes.
+                </div>
               </AlertDescription>
             </>
           )}
@@ -347,19 +378,19 @@ export function QuickActions({ onActionComplete }: QuickActionsProps) {
               <CheckCircle2 className="h-4 w-4" />
               <AlertTitle>Scan Completed</AlertTitle>
               <AlertDescription>
-                {scanStatus.results?.total_shares > 0 ? (
+                {(scanStatus.progress?.total_shares || 0) > 0 ? (
                   <div className="space-y-2">
-                    <p>Found {scanStatus.results.total_shares} shares across {scanStatus.results.total_hosts} hosts</p>
-                    {scanStatus.results.total_sensitive > 0 && (
+                    <p>Found {scanStatus.progress?.total_shares || 0} shares across {scanStatus.progress?.total_hosts || 0} hosts</p>
+                    {(scanStatus.progress?.total_sensitive || 0) > 0 && (
                       <p className="text-yellow-600">
-                        Found {scanStatus.results.total_sensitive} potentially sensitive files
+                        Found {scanStatus.progress?.total_sensitive || 0} potentially sensitive files
                       </p>
                     )}
                   </div>
                 ) : (
                   <p>Scan completed but no accessible shares were found{' '}
-                    {scanStatus.results?.total_hosts ? 
-                      `across ${scanStatus.results.total_hosts} hosts` : 
+                    {scanStatus.progress?.total_hosts ? 
+                      `across ${scanStatus.progress.total_hosts} hosts` : 
                       ''}
                   </p>
                 )}
