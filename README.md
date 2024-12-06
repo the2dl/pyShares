@@ -2,7 +2,7 @@
 
 ![pyShares](img/pyShares.webp)
 
-[![pyShares Demo](https://img.youtube.com/vi/Co3mxy3Nk4o/maxresdefault.jpg)](https://youtu.be/Co3mxy3Nk4o)
+[![pyShares Demo](https://i9.ytimg.com/vi/Co3mxy3Nk4o/mqdefault.jpg?sqp=CMz5zLoG-oaymwEmCMACELQB8quKqQMa8AEB-AH-CYAC0AWKAgwIABABGBcgWyhyMA8=&rs=AOn4CLAA781M2oY5jafOxhrcICu2GWC4uw)](https://youtu.be/Co3mxy3Nk4o)
 *Click the image above to watch the demo video*
 
 A Python-based network share scanner that enumerates and analyzes SMB shares across a Windows domain environment.
