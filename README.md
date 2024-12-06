@@ -1,4 +1,4 @@
-# pyShares - Python-based Active Directory File Share Scanner
+# pyShares with SentryShare - Python-based Active Directory File Share Scanner with Vite/React Frontend
 
 ![pyShares](img/pyShares.webp)
 
