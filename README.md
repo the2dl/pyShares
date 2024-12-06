@@ -37,34 +37,70 @@ source venv/bin/activate # Linux/Mac (Tested from Linux)
 venv\Scripts\activate # Windows
 ```
 
-Install dependencies:
-
-python
-pip install -r requirements.txt
-
-Create a `.env` file with database configuration:
+3. Install dependencies:
 
 ```
-DB_HOST=localhost
+pip install -r requirements.txt
+```
+
+4. Create a `.env` file with database configuration:
+
+```
+DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=fileshare_db
 DB_USER=fileshare_scanner
-DB_PASSWORD=your_password
+DB_PASSWORD=your_secret_password
+
+# Session & Security
+NODE_ENV=production
+## node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" -- create a unique one
+JWT_SECRET=2c45bac7c54349c133....65
+
+# URLs - DO NOT CHANGE
+FRONTEND_URL=http://localhost
+BASE_URL=http://localhost
+VITE_SCANNER_API_URL=/scanner-api
 ```
 
-## Postgres
+## Building the Docker Image
 
-`dockerfile-compose.yaml` will need to be modified to fit your needs (username/password)
+To build and run the application using Docker, follow these steps:
 
-Then run it with `docker exec -it postgres psql -U postgres`
+1. Ensure you have Docker and Docker Compose installed on your machine.
+2. Modify the `docker-compose.yml` file if necessary, particularly the database username and password.
+3. Make sure the `.env` file is in the root directory of the project.
+4. Build and start the Docker containers:
 
-If you need to quickly review it, you can do `docker exec -it docker-postgres-1 psql -U fileshare_scanner -d fileshare_db` and `\dt` to review.
+```
+docker-compose up --build
+```
+
+This command will build the Docker images as specified in the `docker-compose.yml` file and start the services.
+
+You can then access your application at `http://localhost`. Frontend it with Nginx, HAProxy, etc. 
+
+4. To access the PostgreSQL database, you can run:
+
+```
+docker exec -it postgres psql -U postgres
+```
+
+If you need to quickly review it, you can do:
+
+```
+docker exec -it docker-postgres-1 psql -U fileshare_scanner -d fileshare_db
+```
+
+Then use `\dt` to review the tables.
 
 ## Usage
 
 Basic scan of domain computers:
 
-`python src/main.py --dc DC01.domain.local --domain domain.local`
+```
+python src/main.py --dc DC01.domain.local --domain domain.local
+```
 
 Additional options:
 ```
