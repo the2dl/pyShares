@@ -2,6 +2,9 @@
 
 ![pyShares](img/pyShares.webp)
 
+[![pyShares Demo](https://img.youtube.com/vi/Co3mxy3Nk4o/maxresdefault.jpg)](https://youtu.be/Co3mxy3Nk4o)
+*Click the image above to watch the demo video*
+
 A Python-based network share scanner that enumerates and analyzes SMB shares across a Windows domain environment.
 
 I wanted a tool that could scan an entire AD environment and provide a report of all shares, permissions, and sensitive files for various reporting purposes, including DLP/etc. This is that tool.
